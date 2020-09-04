@@ -21,3 +21,9 @@ Eventually I'll plug ths all into a database.
 ```bash
 go run cmd/crawler/main.go
 ```
+
+## TODO
+
+- Replace in memory visited check with postgresql (https://github.com/zolamk/colly-postgres-storage)
+- Create schema for links graph database
+- Implement saving to the db
