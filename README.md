@@ -19,5 +19,5 @@ Eventually I'll plug ths all into a database.
 ## To run
 
 ```bash
-go run cmd/scraper/main.go
+go run cmd/crawler/main.go
 ```
