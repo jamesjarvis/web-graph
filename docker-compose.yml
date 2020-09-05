@@ -1,10 +1,41 @@
-version: '3'
+version: '3.7'
 services:
   database:
     image: "postgres"
     env_file:
       - database.env
+    ports:
+      - "5432:5432"
     volumes:
       - database-data:/var/lib/postgresql/data/
+    networks:
+      - db
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: always
+    env_file:
+      - database.env
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    links:
+      - "database:pgsql-server"
+  crawler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - database.env
+    restart: on-failure
+    depends_on:
+      - database
+    networks:
+      - db
+
 volumes:
   database-data:
+  pgadmin-data:
+
+networks:
+  db:
