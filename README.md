@@ -24,6 +24,49 @@ go run cmd/crawler/main.go
 
 ## TODO
 
-- Replace in memory visited check with postgresql (https://github.com/zolamk/colly-postgres-storage)
-- Create schema for links graph database
-- Implement saving to the db
+- [x] Replace in memory visited check with postgresql (<https://github.com/zolamk/colly-postgres-storage>)
+- [ ] Create schema for links graph database
+- [ ] Implement saving to the db
+
+## DB Schema
+
+| Host ID (PK) | Host URL       |
+| ------------ | -------------- |
+| 1            | jamesjarvis.io |
+| 2            | wikipedia.com  |
+
+### Page
+
+| Page ID (PK) | Host ID (FK) | Path                          |
+| ------------ | ------------ | ----------------------------- |
+| 11           | 1            | /projects/one-second-everyday |
+| 12           | 2            | /united-kingdom               |
+
+### Link
+
+| Link ID (PK) | Link text                    | Link type |
+| ------------ | ---------------------------- | --------- |
+| 111          | I live in the United Kingdom | anchor    |
+
+### Link to
+
+Page to page with link
+
+| FromPageID (FK) | ToPageID(FK) | WithLinkID (FK) |
+| --------------- | ------------ | --------------- |
+| 11              | 12           | 111             |
+
+Orrrrr to make use of content addressible primary keys, we could rearrange it a bit like so, which should improve performance, but reduce the ability to backlink.
+
+### Page
+
+| Page ID (PK) (generated as hash of host+path) | Host           | Path            |
+| --------------------------------------------- | -------------- | --------------- |
+| 1 (hash of host+path)                         | jamesjarvis.io | /               |
+| 2 (hash of host+path)                         | wikipedia.com  | /united-kingdom |
+
+### Link
+
+| FromPageID (FK) | ToPageID (FK) | Link text        | Link type |
+| --------------- | ------------- | ---------------- | --------- |
+| 1               | 2             | I live in the UK | anchor    |

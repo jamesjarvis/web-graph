@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gocolly/colly"
+	"github.com/jamesjarvis/web-graph/pkg/crawler"
 	"github.com/zolamk/colly-postgres-storage/colly/postgres"
 )
 
@@ -22,7 +23,15 @@ func main() {
 		VisitedTable: "colly_visited",
 		CookiesTable: "colly_cookies",
 	}
-	log.Print(storage.URI)
+	crawlerStorage := crawler.Storage{
+		URI:       storage.URI,
+		PageTable: "pages_visited",
+		LinkTable: "links_visited",
+	}
+
+	if err := crawlerStorage.Init(); err != nil {
+		log.Fatal(err)
+	}
 
 	if err := c.SetStorage(storage); err != nil {
 		log.Fatal(err)
@@ -37,15 +46,28 @@ func main() {
 		if err != nil {
 			log.Println("bad url")
 		} else {
-			log.Println(e.Request.URL.Host + " --> " + u.Host)
+
+			if u.Hostname() == "" {
+				u = e.Request.URL.ResolveReference(u)
+			}
+
+			log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
+			err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, "anchor")
+			if err != nil {
+				log.Fatal("Could not log link | " + err.Error())
+			}
 			e.Request.Visit(link)
 		}
 	})
 	c.OnRequest(func(r *colly.Request) {
-		log.Println("Visiting", r.URL)
+		err := crawlerStorage.AddPage(r.URL)
+		log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
+		if err != nil {
+			log.Fatal("Could not log page | " + err.Error())
+		}
 	})
 
-	c.Visit("https://www.jamesjarvis.io")
+	c.Visit("https://jamesjarvis.io/")
 
 	c.Wait()
 }
