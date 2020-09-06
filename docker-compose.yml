@@ -1,5 +1,15 @@
 version: '3.7'
 services:
+  colly-db:
+    image: "postgres"
+    env_file:
+      - database.env
+    ports:
+      - "5433:5432"
+    volumes:
+      - colly-db-data:/var/lib/postgresql/data/
+    networks:
+      - db
   database:
     image: "postgres"
     env_file:
@@ -34,6 +44,7 @@ services:
       - db
 
 volumes:
+  colly-db-data:
   database-data:
   pgadmin-data:
 

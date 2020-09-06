@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/gocolly/colly"
+	"github.com/gocolly/colly/v2"
 	"github.com/jamesjarvis/web-graph/pkg/crawler"
 	"github.com/zolamk/colly-postgres-storage/colly/postgres"
 )
@@ -19,14 +19,16 @@ func main() {
 	)
 
 	storage := &postgres.Storage{
-		URI:          fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
+		URI:          fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "colly-db", os.Getenv("POSTGRES_DB")),
 		VisitedTable: "colly_visited",
 		CookiesTable: "colly_cookies",
 	}
 	crawlerStorage := crawler.Storage{
-		URI:       storage.URI,
-		PageTable: "pages_visited",
-		LinkTable: "links_visited",
+		URI:          fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
+		PageTable:    "pages_visited",
+		LinkTable:    "links_visited",
+		VisitedTable: "colly_visited",
+		CookiesTable: "colly_cookies",
 	}
 
 	if err := crawlerStorage.Init(); err != nil {
@@ -37,7 +39,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2, RandomDelay: 5 * time.Second})
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2, RandomDelay: 20 * time.Second})
 
 	// Find and visit all links
 	c.OnHTML("a", func(e *colly.HTMLElement) {
@@ -56,9 +58,11 @@ func main() {
 			if err != nil {
 				log.Fatal("Could not log link | " + err.Error())
 			}
+
 			e.Request.Visit(link)
 		}
 	})
+
 	c.OnRequest(func(r *colly.Request) {
 		err := crawlerStorage.AddPage(r.URL)
 		log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
