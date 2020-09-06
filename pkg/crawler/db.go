@@ -5,19 +5,16 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
-	"strconv"
 	"sync"
 )
 
 // Storage implements a PostgreSQL storage backend for colly
 type Storage struct {
-	URI          string
-	PageTable    string
-	LinkTable    string
-	VisitedTable string
-	CookiesTable string
-	db           *sql.DB
-	lock         *sync.RWMutex
+	URI       string
+	PageTable string
+	LinkTable string
+	db        *sql.DB
+	lock      *sync.RWMutex
 }
 
 // Init initializes the PostgreSQL storage
@@ -52,20 +49,6 @@ func (s *Storage) Init() error {
 		CONSTRAINT FK_from_page_id FOREIGN KEY (from_page_id) REFERENCES %s(page_id),
 		CONSTRAINT FK_to_page_id FOREIGN KEY (to_page_id) REFERENCES %s(page_id)
 		);`, s.LinkTable, s.PageTable, s.PageTable)
-
-	if _, err = s.db.Exec(query); err != nil {
-		return err
-	}
-
-	// Colly specific shit
-
-	query = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (request_id text not null);", s.VisitedTable)
-
-	if _, err = s.db.Exec(query); err != nil {
-		return err
-	}
-
-	query = fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (host text not null, cookies text not null);", s.CookiesTable)
 
 	if _, err = s.db.Exec(query); err != nil {
 		return err
@@ -148,54 +131,4 @@ func Hash(u *url.URL) string {
 	h.Write([]byte(u.Hostname() + u.EscapedPath()))
 	bs := h.Sum(nil)
 	return fmt.Sprintf("%x", bs)
-}
-
-// Colly specific shit
-
-// Visited implements colly/storage.Visited()
-func (s *Storage) Visited(requestID uint64) error {
-
-	var err error
-
-	query := fmt.Sprintf(`INSERT INTO %s (request_id) VALUES($1);`, s.VisitedTable)
-
-	_, err = s.db.Exec(query, strconv.FormatUint(requestID, 10))
-
-	return err
-
-}
-
-// IsVisited implements colly/storage.IsVisited()
-func (s *Storage) IsVisited(requestID uint64) (bool, error) {
-
-	var isVisited bool
-
-	query := fmt.Sprintf(`SELECT EXISTS(SELECT request_id FROM %s WHERE request_id = $1)`, s.VisitedTable)
-
-	err := s.db.QueryRow(query, strconv.FormatUint(requestID, 10)).Scan(&isVisited)
-
-	return isVisited, err
-
-}
-
-// Cookies implements colly/storage.Cookies()
-func (s *Storage) Cookies(u *url.URL) string {
-
-	var cookies string
-
-	query := fmt.Sprintf(`SELECT cookies FROM %s WHERE host = $1;`, s.CookiesTable)
-
-	s.db.QueryRow(query, u.Host).Scan(&cookies)
-
-	return cookies
-
-}
-
-// SetCookies implements colly/storage.SetCookies()
-func (s *Storage) SetCookies(u *url.URL, cookies string) {
-
-	query := fmt.Sprintf(`INSERT INTO %s (host, cookies) VALUES($1, $2);`, s.CookiesTable)
-
-	s.db.Exec(query, u.Host, cookies)
-
 }

@@ -24,11 +24,9 @@ func main() {
 		CookiesTable: "colly_cookies",
 	}
 	crawlerStorage := crawler.Storage{
-		URI:          fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
-		PageTable:    "pages_visited",
-		LinkTable:    "links_visited",
-		VisitedTable: "colly_visited",
-		CookiesTable: "colly_cookies",
+		URI:       fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
+		PageTable: "pages_visited",
+		LinkTable: "links_visited",
 	}
 
 	if err := crawlerStorage.Init(); err != nil {
