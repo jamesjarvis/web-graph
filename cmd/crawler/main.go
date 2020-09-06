@@ -37,24 +37,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 2, RandomDelay: 20 * time.Second})
+	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5, RandomDelay: 20 * time.Second})
 
 	// Find and visit all links
 	c.OnHTML("a", func(e *colly.HTMLElement) {
 		link := e.Attr("href")
 		u, err := url.Parse(link)
 		if err != nil {
-			log.Println("bad url")
+			log.Printf("ERROR: bad url | %s", link)
 		} else {
 
 			if u.Hostname() == "" {
 				u = e.Request.URL.ResolveReference(u)
 			}
 
-			log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
+			// log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
 			err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, "anchor")
 			if err != nil {
-				log.Fatal("Could not log link | " + err.Error())
+				log.Printf("ERROR: Could not log link %s --> %s | %v", e.Request.URL.String(), u.String(), err)
 			}
 
 			e.Request.Visit(link)
@@ -63,13 +63,33 @@ func main() {
 
 	c.OnRequest(func(r *colly.Request) {
 		err := crawlerStorage.AddPage(r.URL)
-		log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
+		// log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
 		if err != nil {
-			log.Fatal("Could not log page | " + err.Error())
+			log.Printf("Could not log page %s | %v", r.URL.String(), err)
 		}
 	})
 
-	c.Visit("https://jamesjarvis.io/")
+	log.Print("🔥🔥🔥 !!! SCRAPE AWAY !!! 🔥🔥🔥")
+
+	interestingURLs := []string{
+		"https://news.ycombinator.com/",
+		"https://jamesjarvis.io/",
+		"https://www.startups-list.com/",
+		"https://www.indiehackers.com/",
+		"https://www.cisco.com/",
+		"https://thoughtmachine.net/",
+		"https://www.bbc.co.uk/",
+		"https://www.kent.ac.uk/",
+		"https://home.cern/",
+		"https://www.nasa.gov/",
+		"https://www.engadget.com/",
+		"https://www.webdesign-inspiration.com/",
+		"https://moz.com/top500",
+	}
+
+	for _, url := range interestingURLs {
+		c.Visit(url)
+	}
 
 	c.Wait()
 }
