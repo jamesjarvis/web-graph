@@ -1,7 +1,6 @@
 package crawler
 
 import (
-	"fmt"
 	"net/url"
 )
 
@@ -15,6 +14,5 @@ func ScrapeDaTing(u *url.URL) bool {
 	if _, ok := schemes[u.Scheme]; !ok {
 		return false
 	}
-	fmt.Println(u)
 	return true
 }
