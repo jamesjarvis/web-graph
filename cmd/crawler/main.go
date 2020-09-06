@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gocolly/colly/v2"
@@ -37,31 +38,45 @@ func main() {
 		log.Fatal(err)
 	}
 
-	c.Limit(&colly.LimitRule{DomainGlob: "*", Parallelism: 5, RandomDelay: 20 * time.Second})
+	c.Limit(&colly.LimitRule{
+		DomainGlob:  "*",
+		Parallelism: 5,
+		RandomDelay: 1 * time.Second,
+	})
 
 	// Find and visit all links
-	c.OnHTML("a", func(e *colly.HTMLElement) {
-		link := e.Attr("href")
+	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
+		link := strings.TrimSpace(e.Attr("href"))
 		u, err := url.Parse(link)
 		if err != nil {
 			log.Printf("ERROR: bad url | %s", link)
-		} else {
-
-			if u.Hostname() == "" {
-				u = e.Request.URL.ResolveReference(u)
-			}
-
-			// log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
-			err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, "anchor")
-			if err != nil {
-				log.Printf("ERROR: Could not log link %s --> %s | %v", e.Request.URL.String(), u.String(), err)
-			}
-
-			e.Request.Visit(link)
+			return
 		}
+
+		if u.Hostname() == "" {
+			u = e.Request.URL.ResolveReference(u)
+		}
+
+		if !crawler.ScrapeDaTing(u) {
+			return
+		}
+
+		// log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
+		err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, e.Name)
+		if err != nil {
+			log.Printf("ERROR: Could not log link %s --> %s | %v", e.Request.URL.String(), u.String(), err)
+		}
+
+		e.Request.Visit(link)
+
 	})
 
 	c.OnRequest(func(r *colly.Request) {
+		if !crawler.ScrapeDaTing(r.URL) {
+			r.Abort()
+			return
+		}
+
 		err := crawlerStorage.AddPage(r.URL)
 		// log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
 		if err != nil {
@@ -92,4 +107,6 @@ func main() {
 	}
 
 	c.Wait()
+
+	log.Println("Done! 🤯")
 }

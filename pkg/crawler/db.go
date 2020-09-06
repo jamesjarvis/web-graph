@@ -34,7 +34,7 @@ func (s *Storage) Init() error {
 		return err
 	}
 
-	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (page_id text NOT NULL PRIMARY KEY UNIQUE, host text NOT NULL, path text NOT NULL);", s.PageTable)
+	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (page_id text NOT NULL PRIMARY KEY UNIQUE, host text NOT NULL, path text NOT NULL, url text NOT NULL);", s.PageTable)
 
 	if _, err = s.db.Exec(query); err != nil {
 		return err
@@ -81,10 +81,10 @@ func (s *Storage) AddPage(u *url.URL) error {
 		return nil
 	}
 
-	query := fmt.Sprintf(`INSERT INTO %s (page_id, host, path) VALUES($1, $2, $3);`, s.PageTable)
+	query := fmt.Sprintf(`INSERT INTO %s (page_id, host, path, url) VALUES($1, $2, $3, $4);`, s.PageTable)
 
 	s.lock.Lock()
-	_, err = s.db.Exec(query, Hash(u), u.Hostname(), u.EscapedPath())
+	_, err = s.db.Exec(query, Hash(u), u.Hostname(), u.EscapedPath(), u.String())
 	s.lock.Unlock()
 	return err
 }
