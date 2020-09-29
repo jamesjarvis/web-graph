@@ -32,6 +32,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	batchPages := crawler.NewPageBatcher(1000, &crawlerStorage)
+	batchLinks := crawler.NewLinkBatcher(1000, &crawlerStorage)
+
 	q, _ := queue.New(
 		8, // Number of consumer threads
 		&queue.InMemoryQueueStorage{MaxSize: 10000},
@@ -58,12 +61,19 @@ func main() {
 			return
 		}
 
-		// log.Println(e.Request.URL.Hostname() + e.Request.URL.EscapedPath() + " --> " + u.Hostname() + u.EscapedPath())
-		err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, e.Name)
-		if err != nil {
-			log.Printf("ERROR: Could not log link %s --> %s | %v", e.Request.URL.String(), u.String(), err)
-			return
-		}
+		batchPages.AddPage(&crawler.Page{
+			U: e.Request.URL,
+		})
+		batchPages.AddPage(&crawler.Page{
+			U: u,
+		})
+
+		batchLinks.AddLink(&crawler.Link{
+			FromU:    e.Request.URL,
+			ToU:      u,
+			LinkText: e.Text,
+			LinkType: e.Name,
+		})
 
 		q.AddURL(link)
 
@@ -75,11 +85,9 @@ func main() {
 			return
 		}
 
-		err := crawlerStorage.AddPage(r.URL)
-		// log.Println("Visiting", r.URL.Hostname()+r.URL.EscapedPath())
-		if err != nil {
-			log.Printf("Could not log page %s | %v", r.URL.String(), err)
-		}
+		batchPages.AddPage(&crawler.Page{
+			U: r.URL,
+		})
 	})
 
 	log.Print("🔥🔥🔥 !!! SCRAPE AWAY !!! 🔥🔥🔥")
@@ -113,9 +121,16 @@ func main() {
 	qp := queueutils.NewQueuePrinter(q, time.Second*15)
 	qp.PrintQueueStats()
 
+	// Set up batch workers
+	batchLinkKiller := make(chan bool)
+	go batchLinks.Worker(batchLinkKiller)
+	batchPageKiller := make(chan bool)
+	go batchPages.Worker(batchPageKiller)
+
 	q.Run(c)
 
 	qp.KillQueuePrinter()
+	batchLinkKiller <- true
 
 	log.Println("Done! 🤯")
 }

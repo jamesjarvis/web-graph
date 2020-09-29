@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -130,10 +132,80 @@ func (s *Storage) AddLink(fromU *url.URL, toU *url.URL, linkText string, linkTyp
 	return err
 }
 
+// BatchAddLinks takes a batch of links and inserts them, not giving a fuck whether or not they clash
+func (s *Storage) BatchAddLinks(links []*Link) error {
+	// Hmmm, not sure what to do about this page bullshit, maybe I'll make a batch process for that too
+	// // Then try to add the pages
+	// s.AddPage(fromU)
+	// s.AddPage(toU)
+
+	sqlStr := fmt.Sprintf("INSERT INTO %s (from_page_id, to_page_id, text, type) VALUES ", s.LinkTable)
+	vals := []interface{}{}
+
+	for _, link := range links {
+		sqlStr += "(?, ?, ?, ?),"
+		vals = append(vals, Hash(link.FromU), Hash(link.ToU), link.LinkText, link.LinkType)
+	}
+
+	//trim the last ,
+	sqlStr = strings.TrimSuffix(sqlStr, ",")
+
+	// Add "fuck it, idc" to the end
+	sqlStr += " ON CONFLICT DO NOTHING"
+
+	//Replacing ? with $n for postgres
+	sqlStr = ReplaceSQL(sqlStr, "?")
+
+	//prepare the statement
+	stmt, _ := s.db.Prepare(sqlStr)
+
+	//format all vals at once
+	_, err := stmt.Exec(vals...)
+
+	return err
+}
+
+// BatchAddPages takes a batch of pages and inserts them, not giving a fuck whether or not they clash
+func (s *Storage) BatchAddPages(pages []*Page) error {
+	sqlStr := fmt.Sprintf("INSERT INTO %s (page_id, host, path, url) VALUES ", s.PageTable)
+	vals := []interface{}{}
+
+	for _, page := range pages {
+		sqlStr += "(?, ?, ?, ?),"
+		vals = append(vals, Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
+	}
+
+	//trim the last ,
+	sqlStr = strings.TrimSuffix(sqlStr, ",")
+
+	// Add "fuck it, idc" to the end
+	sqlStr += " ON CONFLICT DO NOTHING"
+
+	//Replacing ? with $n for postgres
+	sqlStr = ReplaceSQL(sqlStr, "?")
+
+	//prepare the statement
+	stmt, _ := s.db.Prepare(sqlStr)
+
+	//format all vals at once
+	_, err := stmt.Exec(vals...)
+
+	return err
+}
+
 // Hash returns a SHA1 hash of the host and path
 func Hash(u *url.URL) string {
 	h := sha1.New()
 	h.Write([]byte(u.Hostname() + u.EscapedPath()))
 	bs := h.Sum(nil)
 	return fmt.Sprintf("%x", bs)
+}
+
+// ReplaceSQL replaces the instance occurrence of any string pattern with an increasing $n based sequence
+func ReplaceSQL(old, searchPattern string) string {
+	tmpCount := strings.Count(old, searchPattern)
+	for m := 1; m <= tmpCount; m++ {
+		old = strings.Replace(old, searchPattern, "$"+strconv.Itoa(m), 1)
+	}
+	return old
 }
