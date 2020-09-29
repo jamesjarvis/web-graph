@@ -13,6 +13,7 @@ import (
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/queue"
 	"github.com/jamesjarvis/web-graph/pkg/crawler"
+	"github.com/jamesjarvis/web-graph/pkg/queueutils"
 	_ "github.com/lib/pq"
 )
 
@@ -109,17 +110,12 @@ func main() {
 	// }))
 	// go http.ListenAndServe(":6060", nil)
 
-	// TODO: put in utils
-	go func() {
-		var size int
-		for !q.IsEmpty() {
-			size, _ = q.Size()
-			log.Printf("Queue size: %d", size)
-			time.Sleep(time.Second * 60)
-		}
-	}()
+	qp := queueutils.NewQueuePrinter(q, time.Second*15)
+	qp.PrintQueueStats()
 
 	q.Run(c)
+
+	qp.KillQueuePrinter()
 
 	log.Println("Done! 🤯")
 }
