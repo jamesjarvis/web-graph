@@ -19,8 +19,10 @@ Eventually I'll plug ths all into a database.
 ## To run
 
 ```bash
-go run cmd/crawler/main.go
+docker-compose up --build -d && docker-compose logs -f crawler
 ```
+
+Then open <localhost:8080> and enter your credentials from [Your database environment file](./database.env.example)
 
 ## TODO
 

@@ -8,22 +8,19 @@ import (
 	"strings"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/gocolly/colly/v2"
+	"github.com/gocolly/colly/v2/queue"
 	"github.com/jamesjarvis/web-graph/pkg/crawler"
-	"github.com/zolamk/colly-postgres-storage/colly/postgres"
+	_ "github.com/lib/pq"
 )
 
 func main() {
 	c := colly.NewCollector(
-		colly.Async(true),
 		colly.UserAgent("WebGraph v0.1 https://github.com/jamesjarvis/web-graph - This bot just follows links ¯\\_(ツ)_/¯"),
 	)
 
-	storage := &postgres.Storage{
-		URI:          fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "colly-db", os.Getenv("POSTGRES_DB")),
-		VisitedTable: "colly_visited",
-		CookiesTable: "colly_cookies",
-	}
 	crawlerStorage := crawler.Storage{
 		URI:       fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
 		PageTable: "pages_visited",
@@ -34,14 +31,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	if err := c.SetStorage(storage); err != nil {
-		log.Fatal(err)
-	}
+	q, _ := queue.New(
+		8, // Number of consumer threads
+		&queue.InMemoryQueueStorage{MaxSize: 10000},
+	)
 
 	c.Limit(&colly.LimitRule{
-		DomainGlob:  "*",
-		Parallelism: 5,
-		RandomDelay: 1 * time.Second,
+		DomainGlob: "*",
 	})
 
 	// Find and visit all links
@@ -65,9 +61,10 @@ func main() {
 		err = crawlerStorage.AddLink(e.Request.URL, u, e.Text, e.Name)
 		if err != nil {
 			log.Printf("ERROR: Could not log link %s --> %s | %v", e.Request.URL.String(), u.String(), err)
+			return
 		}
 
-		e.Request.Visit(link)
+		q.AddURL(link)
 
 	})
 
@@ -103,10 +100,26 @@ func main() {
 	}
 
 	for _, url := range interestingURLs {
-		c.Visit(url)
+		q.AddURL(url)
 	}
 
-	c.Wait()
+	// This little snippet enabled the go pprof tools
+	// http.HandleFunc("/test", http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	// 	rw.Write([]byte("hi"))
+	// }))
+	// go http.ListenAndServe(":6060", nil)
+
+	// TODO: put in utils
+	go func() {
+		var size int
+		for !q.IsEmpty() {
+			size, _ = q.Size()
+			log.Printf("Queue size: %d", size)
+			time.Sleep(time.Second * 60)
+		}
+	}()
+
+	q.Run(c)
 
 	log.Println("Done! 🤯")
 }

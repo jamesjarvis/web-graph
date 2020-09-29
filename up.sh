@@ -2,6 +2,6 @@
 
 docker-compose up --build -d
 
-sleep 5s
+sleep 1s
 
 docker-compose logs -f crawler

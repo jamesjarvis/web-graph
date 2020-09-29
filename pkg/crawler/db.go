@@ -14,7 +14,8 @@ type Storage struct {
 	PageTable string
 	LinkTable string
 	db        *sql.DB
-	lock      *sync.RWMutex
+	linkLock  *sync.RWMutex
+	pageLock  *sync.RWMutex
 }
 
 // Init initializes the PostgreSQL storage
@@ -22,8 +23,12 @@ func (s *Storage) Init() error {
 
 	var err error
 
-	if s.lock == nil {
-		s.lock = &sync.RWMutex{}
+	if s.linkLock == nil {
+		s.linkLock = &sync.RWMutex{}
+	}
+
+	if s.pageLock == nil {
+		s.pageLock = &sync.RWMutex{}
 	}
 
 	if s.db, err = sql.Open("postgres", s.URI); err != nil {
@@ -64,9 +69,9 @@ func (s *Storage) CheckPageExists(u *url.URL) (bool, error) {
 
 	query := fmt.Sprintf(`SELECT EXISTS(SELECT page_id FROM %s WHERE page_id = $1)`, s.PageTable)
 
-	s.lock.RLock()
+	s.pageLock.RLock()
 	err := s.db.QueryRow(query, Hash(u)).Scan(&isVisited)
-	s.lock.RUnlock()
+	s.pageLock.RUnlock()
 	return isVisited, err
 }
 
@@ -83,9 +88,9 @@ func (s *Storage) AddPage(u *url.URL) error {
 
 	query := fmt.Sprintf(`INSERT INTO %s (page_id, host, path, url) VALUES($1, $2, $3, $4);`, s.PageTable)
 
-	s.lock.Lock()
+	s.pageLock.Lock()
 	_, err = s.db.Exec(query, Hash(u), u.Hostname(), u.EscapedPath(), u.String())
-	s.lock.Unlock()
+	s.pageLock.Unlock()
 	return err
 }
 
@@ -95,14 +100,16 @@ func (s *Storage) CheckLinkExists(fromU *url.URL, toU *url.URL) (bool, error) {
 
 	query := fmt.Sprintf(`SELECT EXISTS(SELECT to_page_id FROM %s WHERE from_page_id = $1 AND to_page_id = $2)`, s.LinkTable)
 
-	s.lock.RLock()
+	// s.linkLock.RLock()
 	err := s.db.QueryRow(query, Hash(fromU), Hash(toU)).Scan(&isVisited)
-	s.lock.RUnlock()
+	// s.linkLock.RUnlock()
 	return isVisited, err
 }
 
 // AddLink first checks that it does not exist, and then inserts the page
 func (s *Storage) AddLink(fromU *url.URL, toU *url.URL, linkText string, linkType string) error {
+	s.linkLock.Lock()
+	defer s.linkLock.Unlock()
 	// First, check the link already exists
 	visited, err := s.CheckLinkExists(fromU, toU)
 	if err != nil {
@@ -119,9 +126,7 @@ func (s *Storage) AddLink(fromU *url.URL, toU *url.URL, linkText string, linkTyp
 
 	query := fmt.Sprintf(`INSERT INTO %s (from_page_id, to_page_id, text, type) VALUES($1, $2, $3, $4);`, s.LinkTable)
 
-	s.lock.Lock()
 	_, err = s.db.Exec(query, Hash(fromU), Hash(toU), linkText, linkType)
-	s.lock.Unlock()
 	return err
 }
 

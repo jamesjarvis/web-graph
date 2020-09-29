@@ -22,6 +22,8 @@ FROM alpine
 RUN adduser -S -D -H -h /app appuser
 USER appuser
 
+# EXPOSE 6060
+
 COPY --from=builder /build/crawler /app/
 WORKDIR /app
 CMD ["./crawler"]
