@@ -41,7 +41,12 @@ func (s *Storage) Init() error {
 		return err
 	}
 
-	query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (page_id text NOT NULL PRIMARY KEY UNIQUE, host text NOT NULL, path text NOT NULL, url text NOT NULL);", s.PageTable)
+	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		page_id text NOT NULL PRIMARY KEY UNIQUE, 
+		host text NOT NULL, 
+		path text NOT NULL, 
+		url text NOT NULL
+		);`, s.PageTable)
 
 	if _, err = s.db.Exec(query); err != nil {
 		return err
@@ -158,6 +163,7 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 
 	//prepare the statement
 	stmt, _ := s.db.Prepare(sqlStr)
+	defer stmt.Close()
 
 	//format all vals at once
 	_, err := stmt.Exec(vals...)
@@ -186,6 +192,7 @@ func (s *Storage) BatchAddPages(pages []*Page) error {
 
 	//prepare the statement
 	stmt, _ := s.db.Prepare(sqlStr)
+	defer stmt.Close()
 
 	//format all vals at once
 	_, err := stmt.Exec(vals...)

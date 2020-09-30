@@ -32,12 +32,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	batchPages := crawler.NewPageBatcher(1000, &crawlerStorage)
-	batchLinks := crawler.NewLinkBatcher(1000, &crawlerStorage)
+	batchPages, err := crawler.NewPageBatcher(5000, &crawlerStorage)
+	if err != nil {
+		log.Fatal(err)
+	}
+	batchLinks := crawler.NewLinkBatcher(500, &crawlerStorage)
 
 	q, _ := queue.New(
-		8, // Number of consumer threads
-		&queue.InMemoryQueueStorage{MaxSize: 10000},
+		12, // Number of consumer threads
+		&queue.InMemoryQueueStorage{MaxSize: 5000},
 	)
 
 	c.Limit(&colly.LimitRule{
@@ -49,7 +52,7 @@ func main() {
 		link := strings.TrimSpace(e.Attr("href"))
 		u, err := url.Parse(link)
 		if err != nil {
-			log.Printf("ERROR: bad url | %s", link)
+			// log.Printf("ERROR: bad url | %s", link)
 			return
 		}
 
@@ -61,12 +64,16 @@ func main() {
 			return
 		}
 
-		batchPages.AddPage(&crawler.Page{
-			U: e.Request.URL,
-		})
-		batchPages.AddPage(&crawler.Page{
-			U: u,
-		})
+		if ok, _ := c.HasVisited(e.Request.URL.String()); !ok {
+			batchPages.AddPage(&crawler.Page{
+				U: e.Request.URL,
+			})
+		}
+		if ok, _ := c.HasVisited(u.String()); !ok {
+			batchPages.AddPage(&crawler.Page{
+				U: u,
+			})
+		}
 
 		batchLinks.AddLink(&crawler.Link{
 			FromU:    e.Request.URL,
@@ -118,19 +125,18 @@ func main() {
 	// }))
 	// go http.ListenAndServe(":6060", nil)
 
-	qp := queueutils.NewQueuePrinter(q, time.Second*15)
+	qp := queueutils.NewQueuePrinter(q, time.Minute)
 	qp.PrintQueueStats()
 
 	// Set up batch workers
-	batchLinkKiller := make(chan bool)
-	go batchLinks.Worker(batchLinkKiller)
-	batchPageKiller := make(chan bool)
-	go batchPages.Worker(batchPageKiller)
+	batchLinks.SpawnWorkers(10)
+	batchPages.SpawnWorkers(5)
 
 	q.Run(c)
 
 	qp.KillQueuePrinter()
-	batchLinkKiller <- true
+	batchLinks.KillWorkers()
+	batchPages.KillWorkers()
 
 	log.Println("Done! 🤯")
 }

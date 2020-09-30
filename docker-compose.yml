@@ -32,6 +32,7 @@ services:
     links:
       - "database:pgsql-server"
   crawler:
+    image: jjhaslanded/web-graph-crawler
     build:
       context: .
       dockerfile: Dockerfile

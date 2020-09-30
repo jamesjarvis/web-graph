@@ -3,6 +3,8 @@ package crawler
 import (
 	"log"
 	"net/url"
+
+	lru "github.com/hashicorp/golang-lru"
 )
 
 //TODO: Write a batch consumer, that consumes pages from a channel in batches of max 100 and writes to the database
@@ -15,20 +17,25 @@ type Page struct {
 
 // PageBatcher is a simple batching system for recording links to the db
 type PageBatcher struct {
-	maxProcesses int
 	maxBatch     int
 	bufChan      chan *Page
 	s            *Storage
+	killChannels []chan bool
+	cache        *lru.Cache
 }
 
 // NewPageBatcher is a helpfer function for constructing a PageBatcher object
-func NewPageBatcher(maxBatch int, s *Storage) *PageBatcher {
-	return &PageBatcher{
-		maxProcesses: 4,
-		maxBatch:     maxBatch,
-		bufChan:      make(chan *Page, 5000),
-		s:            s,
+func NewPageBatcher(maxBatch int, s *Storage) (*PageBatcher, error) {
+	cache, err := lru.New(100000)
+	if err != nil {
+		return nil, err
 	}
+	return &PageBatcher{
+		maxBatch: maxBatch,
+		bufChan:  make(chan *Page, 20000),
+		s:        s,
+		cache:    cache,
+	}, nil
 }
 
 // Worker is the worker process for the page batcher
@@ -55,6 +62,7 @@ func (pb *PageBatcher) Worker(endSignal chan bool) {
 			}
 
 			// The batch processing
+			// log.Printf("Batch adding pages of size %d", len(pages))
 			err := pb.s.BatchAddPages(pages)
 			if err != nil {
 				log.Printf("Batch adding pages failed!: %e", err)
@@ -63,7 +71,26 @@ func (pb *PageBatcher) Worker(endSignal chan bool) {
 	}
 }
 
+// SpawnWorkers spawns n workers, and returns a kill channel
+func (pb *PageBatcher) SpawnWorkers(nWorkers int) {
+	for i := 0; i < nWorkers; i++ {
+		killChan := make(chan bool)
+		go pb.Worker(killChan)
+		pb.killChannels = append(pb.killChannels, killChan)
+	}
+}
+
+// KillWorkers simply kills all previously spawned workers
+func (pb *PageBatcher) KillWorkers() {
+	for _, workerKillChan := range pb.killChannels {
+		workerKillChan <- true
+	}
+}
+
 // AddPage is a lightweight function to just whack that page into the channel
 func (pb *PageBatcher) AddPage(page *Page) {
-	pb.bufChan <- page
+	ok, _ := pb.cache.ContainsOrAdd(Hash(page.U), true)
+	if !ok {
+		pb.bufChan <- page
+	}
 }
