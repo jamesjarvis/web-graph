@@ -101,6 +101,7 @@ func (lb *LinkBatcher) KillWorkers() {
 }
 
 // AddLink is a lightweight function to just whack that link into the channel
-func (lb *LinkBatcher) AddLink(link *Link) {
+func (lb *LinkBatcher) AddLink(link *Link) error {
 	lb.bufChan <- link
+	return nil
 }

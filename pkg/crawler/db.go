@@ -1,7 +1,6 @@
 package crawler
 
 import (
-	"crypto/sha1"
 	"database/sql"
 	"fmt"
 	"net/url"
@@ -198,14 +197,6 @@ func (s *Storage) BatchAddPages(pages []*Page) error {
 	_, err := stmt.Exec(vals...)
 
 	return err
-}
-
-// Hash returns a SHA1 hash of the host and path
-func Hash(u *url.URL) string {
-	h := sha1.New()
-	h.Write([]byte(u.Hostname() + u.EscapedPath()))
-	bs := h.Sum(nil)
-	return fmt.Sprintf("%x", bs)
 }
 
 // ReplaceSQL replaces the instance occurrence of any string pattern with an increasing $n based sequence

@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -21,6 +23,18 @@ func main() {
 	c := colly.NewCollector(
 		colly.UserAgent("WebGraph v0.1 https://github.com/jamesjarvis/web-graph - This bot just follows links ¯\\_(ツ)_/¯"),
 	)
+	c.WithTransport(&http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   2 * time.Second,
+			KeepAlive: 10 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		// MaxIdleConns:          100,
+		IdleConnTimeout:       10 * time.Second,
+		TLSHandshakeTimeout:   2 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	})
 
 	crawlerStorage := crawler.Storage{
 		URI:       fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", os.Getenv("POSTGRES_USER"), os.Getenv("POSTGRES_PASSWORD"), "database", os.Getenv("POSTGRES_DB")),
@@ -36,11 +50,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	batchLinks := crawler.NewLinkBatcher(500, &crawlerStorage)
+	batchLinks := crawler.NewLinkBatcher(5000, &crawlerStorage)
 
 	q, _ := queue.New(
-		12, // Number of consumer threads
-		&queue.InMemoryQueueStorage{MaxSize: 5000},
+		64, // Number of consumer threads
+		&queue.InMemoryQueueStorage{MaxSize: 3000000},
 	)
 
 	c.Limit(&colly.LimitRule{
@@ -70,9 +84,11 @@ func main() {
 			})
 		}
 		if ok, _ := c.HasVisited(u.String()); !ok {
-			batchPages.AddPage(&crawler.Page{
+			if added := batchPages.AddPage(&crawler.Page{
 				U: u,
-			})
+			}); added {
+				q.AddURL(u.String())
+			}
 		}
 
 		batchLinks.AddLink(&crawler.Link{
@@ -81,8 +97,6 @@ func main() {
 			LinkText: e.Text,
 			LinkType: e.Name,
 		})
-
-		q.AddURL(link)
 
 	})
 
@@ -107,12 +121,15 @@ func main() {
 		"https://www.cisco.com/",
 		"https://thoughtmachine.net/",
 		"https://www.bbc.co.uk/",
+		"https://www.bbc.co.uk/news",
 		"https://www.kent.ac.uk/",
 		"https://home.cern/",
 		"https://www.nasa.gov/",
 		"https://www.engadget.com/",
 		"https://www.webdesign-inspiration.com/",
 		"https://moz.com/top500",
+		"https://www.wired.co.uk/",
+		"https://www.macrumors.com/",
 	}
 
 	for _, url := range interestingURLs {

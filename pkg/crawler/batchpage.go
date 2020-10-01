@@ -21,7 +21,7 @@ type PageBatcher struct {
 	bufChan      chan *Page
 	s            *Storage
 	killChannels []chan bool
-	cache        *lru.Cache
+	Cache        *lru.Cache
 }
 
 // NewPageBatcher is a helpfer function for constructing a PageBatcher object
@@ -34,7 +34,7 @@ func NewPageBatcher(maxBatch int, s *Storage) (*PageBatcher, error) {
 		maxBatch: maxBatch,
 		bufChan:  make(chan *Page, 20000),
 		s:        s,
-		cache:    cache,
+		Cache:    cache,
 	}, nil
 }
 
@@ -88,9 +88,12 @@ func (pb *PageBatcher) KillWorkers() {
 }
 
 // AddPage is a lightweight function to just whack that page into the channel
-func (pb *PageBatcher) AddPage(page *Page) {
-	ok, _ := pb.cache.ContainsOrAdd(Hash(page.U), true)
+// Returns true if it added the page (hadn't been added previously)
+func (pb *PageBatcher) AddPage(page *Page) bool {
+	ok, _ := pb.Cache.ContainsOrAdd(Hash(page.U), true)
 	if !ok {
 		pb.bufChan <- page
+		return true
 	}
+	return false
 }

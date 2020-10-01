@@ -1,6 +1,8 @@
 package crawler
 
 import (
+	"crypto/sha1"
+	"fmt"
 	"net/url"
 )
 
@@ -15,6 +17,14 @@ func ScrapeDaTing(u *url.URL) bool {
 		return false
 	}
 	return true
+}
+
+// Hash returns a SHA1 hash of the host and path
+func Hash(u *url.URL) string {
+	h := sha1.New()
+	h.Write([]byte(u.Hostname() + u.EscapedPath()))
+	bs := h.Sum(nil)
+	return fmt.Sprintf("%x", bs)
 }
 
 //TODO: Write a batch consumer, that consumes links from a channel in batches of max 100 and writes to the database
