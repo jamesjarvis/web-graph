@@ -11,9 +11,17 @@ var schemes = map[string]bool{
 	"https": true,
 }
 
+var ignoreHosts = map[string]bool{
+	"t.co":          true,
+	"pbs.twimg.com": true,
+}
+
 // ScrapeDaTing gives us a yes/no on whether or not we should scrape the following URL, based on our opinionated filters
 func ScrapeDaTing(u *url.URL) bool {
 	if _, ok := schemes[u.Scheme]; !ok {
+		return false
+	}
+	if _, toIgnore := ignoreHosts[u.Scheme]; toIgnore {
 		return false
 	}
 	return true

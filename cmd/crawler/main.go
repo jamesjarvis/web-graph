@@ -54,11 +54,17 @@ func main() {
 
 	q, _ := queue.New(
 		64, // Number of consumer threads
-		&queue.InMemoryQueueStorage{MaxSize: 3000000},
+		&queue.InMemoryQueueStorage{MaxSize: 1000000},
 	)
 
 	c.Limit(&colly.LimitRule{
 		DomainGlob: "*",
+	})
+
+	c.OnResponseHeaders(func(r *colly.Response) {
+		if r.Headers.Get("Content-Type") != "text/html" {
+			r.Request.Abort()
+		}
 	})
 
 	// Find and visit all links
