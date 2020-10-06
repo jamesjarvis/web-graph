@@ -27,11 +27,11 @@ func main() {
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
 			Timeout:   2 * time.Second,
-			KeepAlive: 10 * time.Second,
+			KeepAlive: 100 * time.Second,
 			DualStack: true,
 		}).DialContext,
 		// MaxIdleConns:          100,
-		IdleConnTimeout:       10 * time.Second,
+		IdleConnTimeout:       100 * time.Second,
 		TLSHandshakeTimeout:   2 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	})
@@ -53,7 +53,7 @@ func main() {
 	batchLinks := crawler.NewLinkBatcher(5000, &crawlerStorage)
 
 	q, _ := queue.New(
-		64, // Number of consumer threads
+		128, // Number of consumer threads
 		&queue.InMemoryQueueStorage{MaxSize: 1000000},
 	)
 
@@ -62,10 +62,21 @@ func main() {
 	})
 
 	c.OnResponseHeaders(func(r *colly.Response) {
-		if r.Headers.Get("Content-Type") != "text/html" {
+		h := strings.Split(r.Headers.Get("Content-Type"), ";")
+		switch h[0] {
+		case "application/xhtml+xml":
+			return
+		case "text/html":
+			return
+		default:
 			r.Request.Abort()
 		}
 	})
+
+	// // Set error handler
+	// c.OnError(func(r *colly.Response, err error) {
+	// 	log.Println("Request URL:", r.Request.URL, "failed with response:", r, "\nError:", err)
+	// })
 
 	// Find and visit all links
 	c.OnHTML("a[href]", func(e *colly.HTMLElement) {
@@ -76,7 +87,7 @@ func main() {
 			return
 		}
 
-		if u.Hostname() == "" {
+		if !u.IsAbs() {
 			u = e.Request.URL.ResolveReference(u)
 		}
 
@@ -121,7 +132,6 @@ func main() {
 
 	interestingURLs := []string{
 		"https://news.ycombinator.com/",
-		"https://jamesjarvis.io/",
 		"https://www.startups-list.com/",
 		"https://www.indiehackers.com/",
 		"https://www.cisco.com/",
@@ -136,6 +146,16 @@ func main() {
 		"https://moz.com/top500",
 		"https://www.wired.co.uk/",
 		"https://www.macrumors.com/",
+		"https://jamesjarvis.io/projects",
+		"https://en.wikipedia.org/wiki/Elon_Musk's_Tesla_Roadster",
+		"https://en.wikipedia.org/wiki/Six_Degrees_of_Kevin_Bacon",
+		"https://www.nhm.ac.uk/",
+		"https://www.sciencemuseum.org.uk/",
+		"https://www.businessinsider.com/uk-tech-100-2019-most-important-interesting-and-impactful-people-uk-tech-2019-9?r=US&IR=T#97-the-undergraduate-students-who-beat-apple-to-building-a-web-player-for-apple-music-4",
+		"http://info.cern.ch/hypertext/WWW/TheProject.html",
+		"https://www.nytimes.com/",
+		"https://www.kent.ac.uk/courses/profiles/undergraduate/computer-science-year-industry-musish",
+		"https://www.si.edu/",
 	}
 
 	for _, url := range interestingURLs {

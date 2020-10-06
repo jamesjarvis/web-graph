@@ -20,6 +20,11 @@ services:
       - database-data:/var/lib/postgresql/data/
     networks:
       - db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10k"
+        max-file: "5"
   pgadmin:
     image: dpage/pgadmin4
     restart: always
@@ -31,6 +36,11 @@ services:
       - pgadmin-data:/var/lib/pgadmin
     links:
       - "database:pgsql-server"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10k"
+        max-file: "5"
   crawler:
     image: jjhaslanded/web-graph-crawler
     build:
@@ -45,6 +55,11 @@ services:
       - database
     networks:
       - db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 volumes:
   # colly-db-data:
