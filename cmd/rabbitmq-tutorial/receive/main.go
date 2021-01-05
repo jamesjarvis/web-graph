@@ -2,9 +2,15 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/streadway/amqp"
 )
+
+var rabbit_host = os.Getenv("RABBIT_HOST")
+var rabbit_port = os.Getenv("RABBIT_PORT")
+var rabbit_user = os.Getenv("RABBIT_USERNAME")
+var rabbit_password = os.Getenv("RABBIT_PASSWORD")
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -13,7 +19,7 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial("amqp://" + rabbit_user + ":" + rabbit_password + "@" + rabbit_host + ":" + rabbit_port + "/")
 	failOnError(err, "Failed to connect to RabbitMQ")
 	defer conn.Close()
 
@@ -23,7 +29,7 @@ func main() {
 
 	q, err := ch.QueueDeclare(
 		"hello", // name
-		false,   // durable
+		true,    // durable
 		false,   // delete when unused
 		false,   // exclusive
 		false,   // no-wait

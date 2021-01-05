@@ -13,12 +13,12 @@ RUN go mod download
 COPY . .
 
 # Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -o crawler cmd/crawler/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o receive cmd/rabbitmq-tutorial/receive/main.go
 
 
 ######## Start a new stage from scratch #######
 FROM scratch
 
-COPY --from=builder /build/crawler /crawler
+COPY --from=builder /build/receive /receive
 
-CMD ["./crawler"]
+CMD ["./receive"]

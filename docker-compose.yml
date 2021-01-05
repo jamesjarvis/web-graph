@@ -1,15 +1,5 @@
-version: '3.7'
+version: '3.9'
 services:
-  # colly-db:
-  #   image: "postgres"
-  #   env_file:
-  #     - database.env
-  #   ports:
-  #     - "5433:5432"
-  #   volumes:
-  #     - colly-db-data:/var/lib/postgresql/data/
-  #   networks:
-  #     - db
   database:
     image: "postgres"
     env_file:
@@ -46,15 +36,48 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    hostname: rabbitmq
     restart: always
     ports:
       - 5672:5672
       - 15672:15672
+    networks:
+      - rabbitmq
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
+      - ./data/rabbitmq:/var/lib/rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: "guest"
       RABBITMQ_DEFAULT_PASS: "guest"
+  send:
+    image: jjhaslanded/send
+    build:
+      context: .
+      dockerfile: Dockerfile-send
+    restart: on-failure
+    environment:
+      RABBIT_HOST: "rabbitmq"
+      RABBIT_PORT: "5672"
+      RABBIT_USERNAME: "guest"
+      RABBIT_PASSWORD: "guest"
+    depends_on:
+      - rabbitmq
+    networks:
+      - rabbitmq
+  receive:
+    image: jjhaslanded/receive
+    build:
+      context: .
+      dockerfile: Dockerfile-receive
+    restart: on-failure
+    environment:
+      RABBIT_HOST: "rabbitmq"
+      RABBIT_PORT: "5672"
+      RABBIT_USERNAME: "guest"
+      RABBIT_PASSWORD: "guest"
+    depends_on:
+      - rabbitmq
+    networks:
+      - rabbitmq
   # crawler:
   #   image: jjhaslanded/web-graph-crawler
   #   build:
@@ -76,10 +99,9 @@ services:
   #       max-file: "10"
 
 volumes:
-  # colly-db-data:
   database-data:
   pgadmin-data:
-  rabbitmq-data:
 
 networks:
   db:
+  rabbitmq:
