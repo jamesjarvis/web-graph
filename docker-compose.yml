@@ -48,12 +48,11 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: "guest"
       RABBITMQ_DEFAULT_PASS: "guest"
-  send:
-    image: jjhaslanded/send
+  link-injector:
+    image: jjhaslanded/link-injector
     build:
       context: .
-      dockerfile: Dockerfile-send
-    restart: on-failure
+      dockerfile: Dockerfile-link-injector
     environment:
       RABBIT_HOST: "rabbitmq"
       RABBIT_PORT: "5672"

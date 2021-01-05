@@ -13,12 +13,12 @@ RUN go mod download
 COPY . .
 
 # Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -o send cmd/rabbitmq-tutorial/send/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o linkInjector cmd/link-injector/main.go
 
 
 ######## Start a new stage from scratch #######
 FROM scratch
 
-COPY --from=builder /build/send /send
+COPY --from=builder /build/linkInjector /linkInjector
 
-CMD ["./send"]
+CMD ["./linkInjector"]
