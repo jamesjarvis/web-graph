@@ -36,35 +36,50 @@ services:
       - pgadmin-data:/var/lib/pgadmin
     links:
       - "database:pgsql-server"
+    depends_on:
+      - database
     logging:
       driver: "json-file"
       options:
         max-size: "10k"
         max-file: "5"
-  crawler:
-    image: jjhaslanded/web-graph-crawler
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file:
-      - database.env
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
     ports:
-      - "6060:6060"
-    restart: on-failure
-    depends_on:
-      - database
-    networks:
-      - db
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "200k"
-        max-file: "10"
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: "guest"
+      RABBITMQ_DEFAULT_PASS: "guest"
+  # crawler:
+  #   image: jjhaslanded/web-graph-crawler
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   env_file:
+  #     - database.env
+  #   ports:
+  #     - "6060:6060"
+  #   restart: on-failure
+  #   depends_on:
+  #     - database
+  #   networks:
+  #     - db
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: "200k"
+  #       max-file: "10"
 
 volumes:
   # colly-db-data:
   database-data:
   pgadmin-data:
+  rabbitmq-data:
 
 networks:
   db:
