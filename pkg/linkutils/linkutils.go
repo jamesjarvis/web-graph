@@ -3,7 +3,9 @@ package linkutils
 import (
 	"crypto/sha1"
 	"fmt"
+	"net/http"
 	"net/url"
+	"strings"
 )
 
 var (
@@ -27,6 +29,19 @@ func ScrapeDaTing(u *url.URL) bool {
 		return false
 	}
 	return true
+}
+
+// HappyResponse returns true if we want to continue scraping this thing.
+func HappyResponse(resp *http.Response) bool {
+	h := strings.Split(resp.Header.Get("Content-Type"), ";")
+	switch h[0] {
+	case "application/xhtml+xml":
+		return true
+	case "text/html":
+		return true
+	default:
+		return false
+	}
 }
 
 // Hash returns a SHA1 hash of the host and path

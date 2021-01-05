@@ -1,10 +1,11 @@
-package crawler
+package linkstorage
 
 import (
 	"log"
 	"net/url"
 
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
 
 //TODO: Write a batch consumer, that consumes pages from a channel in batches of max 100 and writes to the database
@@ -90,7 +91,7 @@ func (pb *PageBatcher) KillWorkers() {
 // AddPage is a lightweight function to just whack that page into the channel
 // Returns true if it added the page (hadn't been added previously)
 func (pb *PageBatcher) AddPage(page *Page) bool {
-	ok, _ := pb.Cache.ContainsOrAdd(Hash(page.U), true)
+	ok, _ := pb.Cache.ContainsOrAdd(linkutils.Hash(page.U), true)
 	if !ok {
 		pb.bufChan <- page
 		return true

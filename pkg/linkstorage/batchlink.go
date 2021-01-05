@@ -1,4 +1,4 @@
-package crawler
+package linkstorage
 
 import (
 	"log"
@@ -14,7 +14,6 @@ type Link struct {
 	FromU    *url.URL
 	ToU      *url.URL
 	LinkText string
-	LinkType string
 }
 
 // LinkBatcher is a simple batching system for recording links to the db

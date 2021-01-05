@@ -14,9 +14,14 @@ package main
 // Then send all URLs back to the rabbitmq channel.
 
 import (
+	"fmt"
 	"log"
+	"net/url"
 	"os"
 
+	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
+	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
+	_ "github.com/lib/pq"
 	"github.com/streadway/amqp"
 )
 
@@ -25,6 +30,13 @@ var (
 	rabbitPort     = os.Getenv("RABBIT_PORT")
 	rabbitUser     = os.Getenv("RABBIT_USERNAME")
 	rabbitPassword = os.Getenv("RABBIT_PASSWORD")
+
+	dbUser     = os.Getenv("POSTGRES_USER")
+	dbPassword = os.Getenv("POSTGRES_PASSWORD")
+	dbDatabase = os.Getenv("POSTGRES_DB")
+
+	dbTablePage = "pages_visited"
+	dbTableLink = "links_visited"
 )
 
 func failOnError(err error, msg string) {
@@ -63,11 +75,44 @@ func main() {
 	)
 	failOnError(err, "Failed to register a consumer")
 
+	linkStorage, err := linkstorage.NewStorage(
+		fmt.Sprintf(
+			"postgres://%s:%s@%s:5432/%s?sslmode=disable",
+			dbUser,
+			dbPassword,
+			"database",
+			dbDatabase,
+		),
+		dbTablePage,
+		dbTableLink,
+	)
+	failOnError(err, "Failed to connect to postgres")
+
+	linkProcessor, err := linkprocessor.NewLinkProcessor(
+		linkStorage,
+		100,
+		ch,
+		q,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	forever := make(chan bool)
 
 	go func() {
 		for d := range msgs {
-			log.Printf("Received a message: %s", d.Body)
+			// Parse the URL from rabbitmq.
+			uri, err := url.Parse(string(d.Body))
+			if err != nil {
+				log.Println("Bad URL received")
+				continue
+			}
+
+			err = linkProcessor.ProcessURL(uri)
+			if err != nil {
+				log.Printf("Error whilst processing: %v", err)
+			}
 		}
 	}()
 

@@ -53,20 +53,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile-link-injector
-    environment:
-      RABBIT_HOST: "rabbitmq"
-      RABBIT_PORT: "5672"
-      RABBIT_USERNAME: "guest"
-      RABBIT_PASSWORD: "guest"
-    depends_on:
-      - rabbitmq
-    networks:
-      - rabbitmq
-  receive:
-    image: jjhaslanded/receive
-    build:
-      context: .
-      dockerfile: Dockerfile-receive
     restart: on-failure
     environment:
       RABBIT_HOST: "rabbitmq"
@@ -77,25 +63,30 @@ services:
       - rabbitmq
     networks:
       - rabbitmq
-  # crawler:
-  #   image: jjhaslanded/web-graph-crawler
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   env_file:
-  #     - database.env
-  #   ports:
-  #     - "6060:6060"
-  #   restart: on-failure
-  #   depends_on:
-  #     - database
-  #   networks:
-  #     - db
-  #   logging:
-  #     driver: "json-file"
-  #     options:
-  #       max-size: "200k"
-  #       max-file: "10"
+  link-processor:
+    image: jjhaslanded/link-processor
+    build:
+      context: .
+      dockerfile: Dockerfile-link-processor
+    restart: on-failure
+    env_file:
+      - database.env
+    environment:
+      RABBIT_HOST: "rabbitmq"
+      RABBIT_PORT: "5672"
+      RABBIT_USERNAME: "guest"
+      RABBIT_PASSWORD: "guest"
+    depends_on:
+      - rabbitmq
+      - database
+    networks:
+      - rabbitmq
+      - db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 volumes:
   database-data:

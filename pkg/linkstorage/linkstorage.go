@@ -1,4 +1,4 @@
-package crawler
+package linkstorage
 
 import (
 	"database/sql"
@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
 
 // Storage implements a PostgreSQL storage backend for colly
@@ -19,9 +21,26 @@ type Storage struct {
 	pageLock  *sync.RWMutex
 }
 
+// NewStorage is a wrapper for easily creating a storage object.
+func NewStorage(
+	uri string,
+	pageTable string,
+	linkTable string,
+) (*Storage, error) {
+	storage := &Storage{
+		URI:       uri,
+		PageTable: pageTable,
+		LinkTable: linkTable,
+	}
+	err := storage.Init()
+	if err != nil {
+		return nil, err
+	}
+	return storage, nil
+}
+
 // Init initializes the PostgreSQL storage
 func (s *Storage) Init() error {
-
 	var err error
 
 	if s.linkLock == nil {
@@ -55,7 +74,6 @@ func (s *Storage) Init() error {
 		from_page_id text NOT NULL, 
 		to_page_id text NOT NULL, 
 		text text, 
-		type text NOT NULL, 
 		CONSTRAINT PK_Link PRIMARY KEY (from_page_id,to_page_id),
 		CONSTRAINT FK_from_page_id FOREIGN KEY (from_page_id) REFERENCES %s(page_id),
 		CONSTRAINT FK_to_page_id FOREIGN KEY (to_page_id) REFERENCES %s(page_id)
@@ -66,7 +84,6 @@ func (s *Storage) Init() error {
 	}
 
 	return nil
-
 }
 
 // CheckPageExists checks that the page exists in the visited database
@@ -76,14 +93,14 @@ func (s *Storage) CheckPageExists(u *url.URL) (bool, error) {
 	query := fmt.Sprintf(`SELECT EXISTS(SELECT page_id FROM %s WHERE page_id = $1)`, s.PageTable)
 
 	s.pageLock.RLock()
-	err := s.db.QueryRow(query, Hash(u)).Scan(&isVisited)
+	err := s.db.QueryRow(query, linkutils.Hash(u)).Scan(&isVisited)
 	s.pageLock.RUnlock()
 	return isVisited, err
 }
 
 // AddPage first checks that it does not exist, and then inserts the page
-func (s *Storage) AddPage(u *url.URL) error {
-	visited, err := s.CheckPageExists(u)
+func (s *Storage) AddPage(page *Page) error {
+	visited, err := s.CheckPageExists(page.U)
 	if err != nil {
 		return err
 	}
@@ -95,7 +112,7 @@ func (s *Storage) AddPage(u *url.URL) error {
 	query := fmt.Sprintf(`INSERT INTO %s (page_id, host, path, url) VALUES($1, $2, $3, $4);`, s.PageTable)
 
 	s.pageLock.Lock()
-	_, err = s.db.Exec(query, Hash(u), u.Hostname(), u.EscapedPath(), u.String())
+	_, err = s.db.Exec(query, linkutils.Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
 	s.pageLock.Unlock()
 	return err
 }
@@ -107,17 +124,17 @@ func (s *Storage) CheckLinkExists(fromU *url.URL, toU *url.URL) (bool, error) {
 	query := fmt.Sprintf(`SELECT EXISTS(SELECT to_page_id FROM %s WHERE from_page_id = $1 AND to_page_id = $2)`, s.LinkTable)
 
 	// s.linkLock.RLock()
-	err := s.db.QueryRow(query, Hash(fromU), Hash(toU)).Scan(&isVisited)
+	err := s.db.QueryRow(query, linkutils.Hash(fromU), linkutils.Hash(toU)).Scan(&isVisited)
 	// s.linkLock.RUnlock()
 	return isVisited, err
 }
 
 // AddLink first checks that it does not exist, and then inserts the page
-func (s *Storage) AddLink(fromU *url.URL, toU *url.URL, linkText string, linkType string) error {
+func (s *Storage) AddLink(link *Link) error {
 	s.linkLock.Lock()
 	defer s.linkLock.Unlock()
 	// First, check the link already exists
-	visited, err := s.CheckLinkExists(fromU, toU)
+	visited, err := s.CheckLinkExists(link.FromU, link.ToU)
 	if err != nil {
 		return err
 	}
@@ -127,12 +144,12 @@ func (s *Storage) AddLink(fromU *url.URL, toU *url.URL, linkText string, linkTyp
 	}
 
 	// Then try to add the pages
-	s.AddPage(fromU)
-	s.AddPage(toU)
+	s.AddPage(&Page{U: link.FromU})
+	s.AddPage(&Page{U: link.ToU})
 
-	query := fmt.Sprintf(`INSERT INTO %s (from_page_id, to_page_id, text, type) VALUES($1, $2, $3, $4);`, s.LinkTable)
+	query := fmt.Sprintf(`INSERT INTO %s (from_page_id, to_page_id, text) VALUES($1, $2, $3);`, s.LinkTable)
 
-	_, err = s.db.Exec(query, Hash(fromU), Hash(toU), linkText, linkType)
+	_, err = s.db.Exec(query, linkutils.Hash(link.FromU), linkutils.Hash(link.ToU), link.LinkText)
 	return err
 }
 
@@ -143,12 +160,12 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 	// s.AddPage(fromU)
 	// s.AddPage(toU)
 
-	sqlStr := fmt.Sprintf("INSERT INTO %s (from_page_id, to_page_id, text, type) VALUES ", s.LinkTable)
+	sqlStr := fmt.Sprintf("INSERT INTO %s (from_page_id, to_page_id, text) VALUES ", s.LinkTable)
 	vals := []interface{}{}
 
 	for _, link := range links {
-		sqlStr += "(?, ?, ?, ?),"
-		vals = append(vals, Hash(link.FromU), Hash(link.ToU), link.LinkText, link.LinkType)
+		sqlStr += "(?, ?, ?),"
+		vals = append(vals, linkutils.Hash(link.FromU), linkutils.Hash(link.ToU), link.LinkText)
 	}
 
 	//trim the last ,
@@ -177,7 +194,7 @@ func (s *Storage) BatchAddPages(pages []*Page) error {
 
 	for _, page := range pages {
 		sqlStr += "(?, ?, ?, ?),"
-		vals = append(vals, Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
+		vals = append(vals, linkutils.Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
 	}
 
 	//trim the last ,
