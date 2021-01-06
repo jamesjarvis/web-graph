@@ -23,6 +23,7 @@ type PageBatcher struct {
 	bufChan      chan *Page
 	s            *Storage
 	killChannels []chan bool
+	doneChannels []chan bool
 	Cache        *lru.Cache
 }
 
@@ -40,13 +41,27 @@ func NewPageBatcher(maxBatch int, s *Storage) (*PageBatcher, error) {
 	}, nil
 }
 
+// WaitUntilEmpty returns a channel that receives input once the buffered channel is empty.
+func (pb *PageBatcher) WaitUntilEmpty() <-chan bool {
+	emptyChan := make(chan bool)
+	go func() {
+		for {
+			if len(pb.bufChan) == 0 {
+				emptyChan <- true
+			}
+		}
+	}()
+	return emptyChan
+}
+
 // Worker is the worker process for the page batcher
 // This is straight up nicked from https://blog.drkaka.com/batch-get-from-golangs-buffered-channel-9638573f0c6e
-func (pb *PageBatcher) Worker(endSignal chan bool) {
+func (pb *PageBatcher) Worker(endSignal <-chan bool, doneChan chan<- bool) {
 	// We want it to die on the endSignal, but otherwise keep looping
 	for {
 		select {
 		case <-endSignal:
+			doneChan <- true
 			return
 		case <-time.After(10 * time.Millisecond):
 			var pages []*Page
@@ -71,6 +86,7 @@ func (pb *PageBatcher) Worker(endSignal chan bool) {
 			if err != nil {
 				log.Printf("Batch adding pages failed!: %e", err)
 			}
+
 		}
 	}
 }
@@ -79,8 +95,11 @@ func (pb *PageBatcher) Worker(endSignal chan bool) {
 func (pb *PageBatcher) SpawnWorkers(nWorkers int) {
 	for i := 0; i < nWorkers; i++ {
 		killChan := make(chan bool)
-		go pb.Worker(killChan)
+		doneChan := make(chan bool)
 		pb.killChannels = append(pb.killChannels, killChan)
+		pb.doneChannels = append(pb.doneChannels, doneChan)
+		pb.killChannels = append(pb.killChannels, killChan)
+		go pb.Worker(killChan, doneChan)
 	}
 }
 
@@ -88,6 +107,9 @@ func (pb *PageBatcher) SpawnWorkers(nWorkers int) {
 func (pb *PageBatcher) KillWorkers() {
 	for _, workerKillChan := range pb.killChannels {
 		workerKillChan <- true
+	}
+	for _, doneChan := range pb.doneChannels {
+		<-doneChan
 	}
 }
 

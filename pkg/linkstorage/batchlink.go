@@ -1,7 +1,6 @@
 package linkstorage
 
 import (
-	"fmt"
 	"log"
 	"net/url"
 	"time"
@@ -25,6 +24,7 @@ type LinkBatcher struct {
 	bufChan      chan *Link
 	s            *Storage
 	killChannels []chan bool
+	doneChannels []chan bool
 }
 
 // NewLinkBatcher is a helpfer function for constructing a LinkBatcher object
@@ -38,11 +38,12 @@ func NewLinkBatcher(maxBatch int, s *Storage) *LinkBatcher {
 
 // Worker is the worker process for the link batcher
 // This is straight up nicked from https://blog.drkaka.com/batch-get-from-golangs-buffered-channel-9638573f0c6e
-func (lb *LinkBatcher) Worker(endSignal chan bool) {
+func (lb *LinkBatcher) Worker(endSignal <-chan bool, doneChan chan<- bool) {
 	// We want it to die on the endSignal, but otherwise keep looping
 	for {
 		select {
 		case <-endSignal:
+			doneChan <- true
 			return
 		case <-time.After(10 * time.Millisecond):
 			var links []*Link
@@ -61,38 +62,28 @@ func (lb *LinkBatcher) Worker(endSignal chan bool) {
 				break
 			}
 
+			// Ok I know this is a bit dirty, but basically sometimes we get foreign key issues
+			// So I'm just going to keep retrying it until eventually the page is added right?
+
 			err := lb.ResilientBatchAddLinks(links)
 			if err != nil {
 				log.Printf("Batch adding links failed!: %e", err)
 			}
-
-			// // Ok I know this is a bit dirty, but basically sometimes we get foreign key issues
-			// // So I'm just going to keep retrying it until eventually the page is added right?
-			// var err error
-			// var retrying = true
-			// var count int
-			// for retrying {
-			// 	count++
-			// 	// The batch processing
-			// 	// log.Printf("Batch adding links of size %d", len(links))
-			// 	err = lb.s.BatchAddLinks(links)
-			// 	if err != nil {
-			// 		if count >= 15 {
-			// 			log.Printf("Batch adding links failed: %v", err)
-			// 			retrying = false
-			// 		} else {
-			// 			if count >= 10 {
-			// 				log.Printf("Batch adding links failed. Retrying now %d....", count)
-			// 			}
-			// 			<-time.After(time.Millisecond * time.Duration(count*200))
-			// 		}
-			// 	} else {
-			// 		retrying = false
-			// 	}
-			// }
-
 		}
 	}
+}
+
+// WaitUntilEmpty returns a channel that receives input once the buffered channel is empty.
+func (lb *LinkBatcher) WaitUntilEmpty() <-chan bool {
+	emptyChan := make(chan bool)
+	go func() {
+		for {
+			if len(lb.bufChan) == 0 {
+				emptyChan <- true
+			}
+		}
+	}()
+	return emptyChan
 }
 
 // ResilientBatchAddLinks shrinks the batch sizes until it eventually works :shrug:
@@ -113,7 +104,9 @@ func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
 				// Here err is of type *pq.Error, you may inspect all its fields, e.g.:
 				if pqErr.Code == "23503" {
 					// Here the error code is a foreign_key_violation, and we can maaaybe assume that the link will eventually be added so we retry this for 10 seconds or so.
-					fmt.Printf("retrying foreign_key_violation %d/%d\n", retryCount+1, maxRetries)
+					if retryCount > 10 {
+						log.Printf("retrying foreign_key_violation %d/%d\n", retryCount+1, maxRetries)
+					}
 					retryCount++
 					if retryCount == maxRetries {
 						break
@@ -134,8 +127,10 @@ func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
 func (lb *LinkBatcher) SpawnWorkers(nWorkers int) {
 	for i := 0; i < nWorkers; i++ {
 		killChan := make(chan bool)
-		go lb.Worker(killChan)
+		doneChan := make(chan bool)
 		lb.killChannels = append(lb.killChannels, killChan)
+		lb.doneChannels = append(lb.doneChannels, doneChan)
+		go lb.Worker(killChan, doneChan)
 	}
 }
 
@@ -143,6 +138,9 @@ func (lb *LinkBatcher) SpawnWorkers(nWorkers int) {
 func (lb *LinkBatcher) KillWorkers() {
 	for _, workerKillChan := range lb.killChannels {
 		workerKillChan <- true
+	}
+	for _, doneChan := range lb.doneChannels {
+		<-doneChan
 	}
 }
 

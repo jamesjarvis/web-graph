@@ -19,6 +19,8 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
@@ -128,9 +130,14 @@ func main() {
 	failOnError(err, "Could not initialise link processor")
 
 	log.Println("Begin processing...")
-
-	for {
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGKILL)
+	processing := true
+	for processing {
 		select {
+		case s := <-sigs:
+			processing = false
+			log.Printf("Received signal %s, shutting down gracefully...\n", s)
 		case url := <-queue.DeQueue():
 			err = linkProcessor.ProcessURL(url)
 			if err != nil {
@@ -139,4 +146,7 @@ func main() {
 			}
 		}
 	}
+
+	<-linkProcessor.GracefulShutdown()
+	log.Println("Shut down link processor")
 }

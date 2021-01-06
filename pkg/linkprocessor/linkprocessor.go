@@ -54,6 +54,22 @@ func NewLinkProcessor(
 	}, nil
 }
 
+// GracefulShutdown returns a channel that receives true when it has finished flushing the db batching cache / finished writing to the queue.
+func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
+	readyToKill := make(chan bool)
+
+	go func() {
+		// Check if link/page batching has finished.
+		<-lp.linkBatcher.WaitUntilEmpty()
+		<-lp.pageBatcher.WaitUntilEmpty()
+		lp.Close()
+		readyToKill <- true
+	}()
+
+	return readyToKill
+}
+
+// Close immediately kills batching workers.
 func (lp *LinkProcessor) Close() {
 	lp.linkBatcher.KillWorkers()
 	lp.pageBatcher.KillWorkers()
@@ -187,22 +203,32 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 	lp.pageBatcher.AddPage(&linkstorage.Page{U: u})
 
 	// Retrieve html, parse links
-	links, err := lp.ScrapeLinksFromURL(u)
+	var links []*linkstorage.Link
+	links, err = lp.ScrapeLinksFromURL(u)
 	if err != nil {
 		return err
 	}
 
 	for _, link := range links {
-		// this appends the link URL's to be scraped
-		err := lp.queueURL(link.ToU)
+		exists, err := lp.CheckURLExists(link.ToU)
 		if err != nil {
-			log.Printf("Could not queue url: %v", err)
+			log.Printf("Could not check if URL has been visited: %v\n", err)
+			return err
+		}
+		if !exists {
+			// this appends the link URL's to be scraped
+			err = lp.queueURL(link.ToU)
+			if err != nil {
+				log.Printf("Could not queue url: %v", err)
+			}
+
+			// This saves each link page to db and the link
+			lp.pageBatcher.AddPage(&linkstorage.Page{U: link.ToU})
 		}
 
-		// This saves each link page to db and the link
-		lp.pageBatcher.AddPage(&linkstorage.Page{U: link.ToU})
 		lp.linkBatcher.AddLink(link)
 	}
 
+	links = nil
 	return nil
 }
