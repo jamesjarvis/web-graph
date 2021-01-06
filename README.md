@@ -21,6 +21,7 @@ docker-compose up --build -d && docker-compose logs -f crawler
 ```
 
 Then open <localhost:8080> and enter your credentials from [Your database environment file](./database.env.example)
+And open <localhost:15672> with guest, guest to see the queue status.
 
 ## TODO
 
@@ -40,6 +41,6 @@ Then open <localhost:8080> and enter your credentials from [Your database enviro
 
 ### Link
 
-| FromPageID (FK) | ToPageID (FK) | Link text        | Link type |
-| --------------- | ------------- | ---------------- | --------- |
-| 1               | 2             | I live in the UK | anchor    |
+| FromPageID (FK) | ToPageID (FK) | Link text        |
+| --------------- | ------------- | ---------------- |
+| 1               | 2             | I live in the UK |

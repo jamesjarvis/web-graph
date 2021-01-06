@@ -1,15 +1,5 @@
-version: '3.7'
+version: '3.9'
 services:
-  # colly-db:
-  #   image: "postgres"
-  #   env_file:
-  #     - database.env
-  #   ports:
-  #     - "5433:5432"
-  #   volumes:
-  #     - colly-db-data:/var/lib/postgresql/data/
-  #   networks:
-  #     - db
   database:
     image: "postgres"
     env_file:
@@ -17,7 +7,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - database-data:/var/lib/postgresql/data/
+      - ./data/db:/var/lib/postgresql/data/
     networks:
       - db
     logging:
@@ -33,24 +23,31 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
+      - ./data/pgadmin:/var/lib/pgadmin
     links:
       - "database:pgsql-server"
+    depends_on:
+      - database
+    networks:
+      - db
     logging:
       driver: "json-file"
       options:
         max-size: "10k"
         max-file: "5"
-  crawler:
-    image: jjhaslanded/web-graph-crawler
+  link-processor:
+    image: jjhaslanded/link-processor
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-link-processor
+    restart: on-failure
+    stop_grace_period: 30s
     env_file:
       - database.env
-    ports:
-      - "6060:6060"
-    restart: on-failure
+    environment:
+      QUEUE_DATA: "/queue_data"
+    volumes:
+      - ./data/queue:/queue_data
     depends_on:
       - database
     networks:
@@ -61,10 +58,9 @@ services:
         max-size: "200k"
         max-file: "10"
 
-volumes:
-  # colly-db-data:
-  database-data:
-  pgadmin-data:
+# volumes:
+#   database-data:
+#   pgadmin-data:
 
 networks:
   db:

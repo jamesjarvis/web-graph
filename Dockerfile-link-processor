@@ -13,17 +13,12 @@ RUN go mod download
 COPY . .
 
 # Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -o crawler cmd/crawler/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o linkProcessor cmd/link-processor/main.go
 
 
 ######## Start a new stage from scratch #######
-FROM alpine
+FROM scratch
 
-RUN adduser -S -D -H -h /app appuser
-USER appuser
+COPY --from=builder /build/linkProcessor /linkProcessor
 
-# EXPOSE 6060
-
-COPY --from=builder /build/crawler /app/
-WORKDIR /app
-CMD ["./crawler"]
+CMD ["./linkProcessor"]
