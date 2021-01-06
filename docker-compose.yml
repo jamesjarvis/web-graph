@@ -61,6 +61,7 @@ services:
       RABBIT_PASSWORD: "guest"
     depends_on:
       - rabbitmq
+      - link-processor
     networks:
       - rabbitmq
   link-processor:

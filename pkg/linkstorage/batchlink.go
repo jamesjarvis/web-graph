@@ -28,7 +28,7 @@ type LinkBatcher struct {
 func NewLinkBatcher(maxBatch int, s *Storage) *LinkBatcher {
 	return &LinkBatcher{
 		maxBatch: maxBatch,
-		bufChan:  make(chan *Link, 20000),
+		bufChan:  make(chan *Link, maxBatch*4),
 		s:        s,
 	}
 }
@@ -41,13 +41,11 @@ func (lb *LinkBatcher) Worker(endSignal chan bool) {
 		select {
 		case <-endSignal:
 			return
-		default:
+		case <-time.After(10 * time.Millisecond):
 			var links []*Link
-			links = append(links, <-lb.bufChan)
-			remains := lb.maxBatch
 
 		Remaining:
-			for i := 0; i < remains; i++ {
+			for i := 0; i < lb.maxBatch; i++ {
 				select {
 				case link := <-lb.bufChan:
 					links = append(links, link)
@@ -56,31 +54,60 @@ func (lb *LinkBatcher) Worker(endSignal chan bool) {
 				}
 			}
 
-			// Ok I know this is a bit dirty, but basically sometimes we get foreign key issues
-			// So I'm just going to keep retrying it until eventually the page is added right?
-			var err error
-			var retrying = true
-			var count int
-			for retrying {
-				count++
-				// The batch processing
-				// log.Printf("Batch adding links of size %d", len(links))
-				err = lb.s.BatchAddLinks(links)
-				if err != nil {
-					if count >= 15 {
-						retrying = false
-					} else {
-						if count >= 10 {
-							log.Printf("Batch adding links failed. Retrying now %d....", count)
-						}
-						<-time.After(time.Millisecond * time.Duration(count*200))
-					}
-				} else {
-					retrying = false
-				}
+			if len(links) == 0 {
+				break
 			}
+
+			err := lb.ResilientBatchAddLinks(links)
+			if err != nil {
+				log.Printf("Batch adding links failed!: %e", err)
+			}
+
+			// // Ok I know this is a bit dirty, but basically sometimes we get foreign key issues
+			// // So I'm just going to keep retrying it until eventually the page is added right?
+			// var err error
+			// var retrying = true
+			// var count int
+			// for retrying {
+			// 	count++
+			// 	// The batch processing
+			// 	// log.Printf("Batch adding links of size %d", len(links))
+			// 	err = lb.s.BatchAddLinks(links)
+			// 	if err != nil {
+			// 		if count >= 15 {
+			// 			log.Printf("Batch adding links failed: %v", err)
+			// 			retrying = false
+			// 		} else {
+			// 			if count >= 10 {
+			// 				log.Printf("Batch adding links failed. Retrying now %d....", count)
+			// 			}
+			// 			<-time.After(time.Millisecond * time.Duration(count*200))
+			// 		}
+			// 	} else {
+			// 		retrying = false
+			// 	}
+			// }
+
 		}
 	}
+}
+
+// ResilientBatchAddLinks shrinks the batch sizes until it eventually works :shrug:
+func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
+	batchSize := len(links)
+	tempBatch := links
+	var err error
+	for batchSize >= 1 {
+		err = lb.s.BatchAddLinks(tempBatch[:batchSize])
+		if err != nil && batchSize > 1 {
+			batchSize = batchSize / 2
+			continue
+		}
+		// We can reach here if the batch size == 1, in which case we skip that message and continue because fuck it.
+		tempBatch = tempBatch[batchSize:]
+		batchSize = len(tempBatch)
+	}
+	return err
 }
 
 // SpawnWorkers spawns n workers, and returns a kill channel

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/assembla/cony"
 	"github.com/jamesjarvis/web-graph/pkg/linkcache"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
@@ -22,21 +23,16 @@ type LinkProcessor struct {
 	linkBatcher *linkstorage.LinkBatcher
 	pageBatcher *linkstorage.PageBatcher
 	storage     *linkstorage.Storage
-	ch          *amqp.Channel
-	q           amqp.Queue
+	pbl         *cony.Publisher
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
 func NewLinkProcessor(
 	storage *linkstorage.Storage,
 	batchSize int,
-	ch *amqp.Channel,
-	q amqp.Queue,
+	pbl *cony.Publisher,
+	numWorkers int,
 ) (*LinkProcessor, error) {
-	linkBatcher := linkstorage.NewLinkBatcher(
-		batchSize,
-		storage,
-	)
 	pageBatcher, err := linkstorage.NewPageBatcher(
 		batchSize,
 		storage,
@@ -44,14 +40,24 @@ func NewLinkProcessor(
 	if err != nil {
 		return nil, err
 	}
+	linkBatcher := linkstorage.NewLinkBatcher(
+		batchSize,
+		storage,
+	)
+	linkBatcher.SpawnWorkers(numWorkers)
+	pageBatcher.SpawnWorkers(numWorkers)
 	return &LinkProcessor{
 		cache:       linkcache.NewLinkCache(2 * 24 * time.Hour),
 		storage:     storage,
 		linkBatcher: linkBatcher,
 		pageBatcher: pageBatcher,
-		ch:          ch,
-		q:           q,
+		pbl:         pbl,
 	}, nil
+}
+
+func (lp *LinkProcessor) Close() {
+	lp.linkBatcher.KillWorkers()
+	lp.pageBatcher.KillWorkers()
 }
 
 // CheckURLExists initially checks the in memory cache forthe url, and returns true if found.
@@ -77,17 +83,11 @@ func (lp *LinkProcessor) MarkURLVisited(u *url.URL) {
 }
 
 func (lp *LinkProcessor) queueURL(u *url.URL) error {
-	return lp.ch.Publish(
-		"",        // exchange
-		lp.q.Name, // routing key
-		false,     // mandatory
-		false,     // immediate
-		amqp.Publishing{
-			ContentType:  "text/plain",
-			Body:         []byte(u.String()),
-			DeliveryMode: amqp.Persistent,
-		},
-	)
+	return lp.pbl.Publish(amqp.Publishing{
+		ContentType:  "text/plain",
+		Body:         []byte(u.String()),
+		DeliveryMode: amqp.Persistent,
+	})
 }
 
 // ScrapeLinksFromURL takes a url to scrape, retrieves the page and returns all links found.
@@ -129,7 +129,7 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 	defer response.Body.Close()
 
 	if !linkutils.HappyResponse(response) {
-		return nil, fmt.Errorf("We do not care about %s", u)
+		return nil, fmt.Errorf("Bad content type from %s", u)
 	}
 
 	// Create a goquery document from the HTTP response
@@ -194,7 +194,6 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 	// Retrieve html, parse links
 	links, err := lp.ScrapeLinksFromURL(u)
 	if err != nil {
-		log.Printf("Could not parse page from url (%s): %v\n", u, err)
 		return err
 	}
 

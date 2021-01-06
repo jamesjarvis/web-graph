@@ -19,6 +19,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/assembla/cony"
 	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 	_ "github.com/lib/pq"
@@ -37,6 +38,27 @@ var (
 
 	dbTablePage = "pages_visited"
 	dbTableLink = "links_visited"
+
+	rabbitMQURL = "amqp://" + rabbitUser + ":" + rabbitPassword + "@" + rabbitHost + ":" + rabbitPort + "/"
+	channelName = "links"
+
+	que = &cony.Queue{
+		AutoDelete: false,
+		Name:       channelName,
+		Durable:    true,
+		Args:       amqp.Table{"x-queue-mode": "lazy"},
+	}
+	exc = cony.Exchange{
+		Name:       "links-exchange",
+		Kind:       "fanout",
+		AutoDelete: false,
+		Durable:    true,
+	}
+	bnd = cony.Binding{
+		Queue:    que,
+		Exchange: exc,
+		Key:      "",
+	}
 )
 
 func failOnError(err error, msg string) {
@@ -46,35 +68,48 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPassword + "@" + rabbitHost + ":" + rabbitPort + "/")
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
-
-	q, err := ch.QueueDeclare(
-		"hello", // name
-		true,    // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
+	// Construct new client with the flag url
+	// and default backoff policy
+	c := cony.NewClient(
+		cony.URL(rabbitMQURL),
+		cony.Backoff(cony.DefaultBackoff),
 	)
-	failOnError(err, "Failed to declare a queue")
 
-	msgs, err := ch.Consume(
-		q.Name, // queue
-		"",     // consumer
-		true,   // auto-ack
-		false,  // exclusive
-		false,  // no-local
-		false,  // no-wait
-		nil,    // args
+	pc := cony.NewClient(
+		cony.URL(rabbitMQURL),
+		cony.Backoff(cony.DefaultBackoff),
 	)
-	failOnError(err, "Failed to register a consumer")
 
+	// Declarations
+	// The queue name will be supplied by the AMQP server
+	c.Declare([]cony.Declaration{
+		cony.DeclareQueue(que),
+		cony.DeclareExchange(exc),
+		cony.DeclareBinding(bnd),
+	})
+	pc.Declare([]cony.Declaration{
+		cony.DeclareQueue(que),
+		cony.DeclareExchange(exc),
+		cony.DeclareBinding(bnd),
+	})
+
+	// Declare and register a publisher
+	// with the cony client
+	pbl := cony.NewPublisher(exc.Name, "")
+	pc.Publish(pbl)
+
+	go func() {
+		for pc.Loop() {
+			select {
+			case err := <-pc.Errors():
+				log.Printf("Publishing client error: %v\n", err)
+			case blocked := <-pc.Blocking():
+				log.Printf("Publishing client is blocked %v\n", blocked)
+			}
+		}
+	}()
+
+	// Initialise database connections
 	linkStorage, err := linkstorage.NewStorage(
 		fmt.Sprintf(
 			"postgres://%s:%s@%s:5432/%s?sslmode=disable",
@@ -90,32 +125,44 @@ func main() {
 
 	linkProcessor, err := linkprocessor.NewLinkProcessor(
 		linkStorage,
-		100,
-		ch,
-		q,
+		500,
+		pbl,
+		1,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	forever := make(chan bool)
-
-	go func() {
-		for d := range msgs {
+	// Declare and register a consumer
+	cns := cony.NewConsumer(
+		que,
+	)
+	c.Consume(cns)
+	for c.Loop() {
+		select {
+		case msg := <-cns.Deliveries():
 			// Parse the URL from rabbitmq.
-			uri, err := url.Parse(string(d.Body))
+			uri, err := url.Parse(string(msg.Body))
 			if err != nil {
-				log.Println("Bad URL received")
-				continue
+				log.Printf("Bad URL received: %v", string(msg.Body))
+				msg.Reject(false)
+				break
 			}
 
 			err = linkProcessor.ProcessURL(uri)
 			if err != nil {
 				log.Printf("Error whilst processing: %v", err)
+				msg.Reject(false)
+				break
 			}
-		}
-	}()
 
-	log.Printf(" [*] Waiting for messages. To exit press CTRL+C")
-	<-forever
+			msg.Ack(false)
+		case err := <-cns.Errors():
+			log.Printf("Consumer error: %v\n", err)
+		case err := <-c.Errors():
+			log.Printf("Consumer client error: %v\n", err)
+		case blocked := <-c.Blocking():
+			log.Printf("Client is blocked %v\n", blocked)
+		}
+	}
 }

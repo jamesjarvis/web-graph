@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/assembla/cony"
 	"github.com/streadway/amqp"
 )
 
@@ -14,6 +15,27 @@ var (
 	rabbitPort     = os.Getenv("RABBIT_PORT")
 	rabbitUser     = os.Getenv("RABBIT_USERNAME")
 	rabbitPassword = os.Getenv("RABBIT_PASSWORD")
+
+	rabbitMQURL = "amqp://" + rabbitUser + ":" + rabbitPassword + "@" + rabbitHost + ":" + rabbitPort + "/"
+	channelName = "links"
+
+	que = &cony.Queue{
+		AutoDelete: false,
+		Name:       channelName,
+		Durable:    true,
+		Args:       amqp.Table{"x-queue-mode": "lazy"},
+	}
+	exc = cony.Exchange{
+		Name:       "links-exchange",
+		Kind:       "fanout",
+		AutoDelete: false,
+		Durable:    true,
+	}
+	bnd = cony.Binding{
+		Queue:    que,
+		Exchange: exc,
+		Key:      "",
+	}
 
 	interestingURLs = []string{
 		"https://news.ycombinator.com/",
@@ -51,40 +73,54 @@ func failOnError(err error, msg string) {
 }
 
 func main() {
-	conn, err := amqp.Dial("amqp://" + rabbitUser + ":" + rabbitPassword + "@" + rabbitHost + ":" + rabbitPort + "/")
-	failOnError(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
-
-	ch, err := conn.Channel()
-	failOnError(err, "Failed to open a channel")
-	defer ch.Close()
-
-	q, err := ch.QueueDeclare(
-		"hello", // name
-		true,    // durable
-		false,   // delete when unused
-		false,   // exclusive
-		false,   // no-wait
-		nil,     // arguments
+	// Construct new client with the flag url
+	// and default backoff policy
+	pc := cony.NewClient(
+		cony.URL(rabbitMQURL),
+		cony.Backoff(cony.DefaultBackoff),
 	)
-	failOnError(err, "Failed to declare a queue")
+
+	// Declarations
+	// The queue name will be supplied by the AMQP server
+	pc.Declare([]cony.Declaration{
+		cony.DeclareQueue(que),
+		cony.DeclareExchange(exc),
+		cony.DeclareBinding(bnd),
+	})
+
+	// Declare and register a publisher
+	// with the cony client
+	pbl := cony.NewPublisher(exc.Name, "")
+	pc.Publish(pbl)
 
 	log.Printf("Seeding initial URL's to the queue!")
 
-	for _, u := range interestingURLs {
-		err = ch.Publish(
-			"",     // exchange
-			q.Name, // routing key
-			false,  // mandatory
-			false,  // immediate
-			amqp.Publishing{
-				ContentType:  "text/plain",
-				Body:         []byte(u),
-				DeliveryMode: amqp.Persistent,
-			},
-		)
-		log.Printf(" [x] Sent %s", u)
-		failOnError(err, "Failed to publish a message")
+	go func() {
+		for _, u := range interestingURLs {
+			err := pbl.Publish(
+				amqp.Publishing{
+					ContentType:  "text/plain",
+					Body:         []byte(u),
+					DeliveryMode: amqp.Persistent,
+				},
+			)
+			log.Printf(" [x] Sent %s", u)
+			if err != nil {
+				log.Printf("Client publish error: %v\n", err)
+			}
+		}
+		pc.Close()
+	}()
+
+	// Client loop sends out declarations(exchanges, queues, bindings
+	// etc) to the AMQP server. It also handles reconnecting.
+	for pc.Loop() {
+		select {
+		case err := <-pc.Errors():
+			log.Printf("Client error: %v\n", err)
+		case blocked := <-pc.Blocking():
+			log.Printf("Client is blocked %v\n", blocked)
+		}
 	}
 
 	log.Printf("======= All done! =======")

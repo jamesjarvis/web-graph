@@ -3,6 +3,7 @@ package linkstorage
 import (
 	"log"
 	"net/url"
+	"time"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
@@ -33,7 +34,7 @@ func NewPageBatcher(maxBatch int, s *Storage) (*PageBatcher, error) {
 	}
 	return &PageBatcher{
 		maxBatch: maxBatch,
-		bufChan:  make(chan *Page, 20000),
+		bufChan:  make(chan *Page, maxBatch*4),
 		s:        s,
 		Cache:    cache,
 	}, nil
@@ -47,19 +48,21 @@ func (pb *PageBatcher) Worker(endSignal chan bool) {
 		select {
 		case <-endSignal:
 			return
-		default:
+		case <-time.After(10 * time.Millisecond):
 			var pages []*Page
-			pages = append(pages, <-pb.bufChan)
-			remains := pb.maxBatch
 
 		Remaining:
-			for i := 0; i < remains; i++ {
+			for i := 0; i < pb.maxBatch; i++ {
 				select {
 				case page := <-pb.bufChan:
 					pages = append(pages, page)
 				default:
 					break Remaining
 				}
+			}
+
+			if len(pages) == 0 {
+				break
 			}
 
 			// The batch processing

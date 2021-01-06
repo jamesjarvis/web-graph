@@ -160,58 +160,64 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 	// s.AddPage(fromU)
 	// s.AddPage(toU)
 
-	sqlStr := fmt.Sprintf("INSERT INTO %s (from_page_id, to_page_id, text) VALUES ", s.LinkTable)
+	valueStrings := make([]string, 0, len(links))
 	vals := []interface{}{}
 
 	for _, link := range links {
-		sqlStr += "(?, ?, ?),"
+		valueStrings = append(valueStrings, "(?, ?, ?)")
 		vals = append(vals, linkutils.Hash(link.FromU), linkutils.Hash(link.ToU), link.LinkText)
 	}
 
-	//trim the last ,
-	sqlStr = strings.TrimSuffix(sqlStr, ",")
-
-	// Add "fuck it, idc" to the end
-	sqlStr += " ON CONFLICT DO NOTHING"
+	sqlStr := fmt.Sprintf(
+		"INSERT INTO %s (from_page_id, to_page_id, text) VALUES %s ON CONFLICT DO NOTHING",
+		s.LinkTable,
+		strings.Join(valueStrings, ","),
+	)
 
 	//Replacing ? with $n for postgres
 	sqlStr = ReplaceSQL(sqlStr, "?")
 
 	//prepare the statement
-	stmt, _ := s.db.Prepare(sqlStr)
+	stmt, err := s.db.Prepare(sqlStr)
+	if err != nil {
+		return err
+	}
 	defer stmt.Close()
 
 	//format all vals at once
-	_, err := stmt.Exec(vals...)
+	_, err = stmt.Exec(vals...)
 
 	return err
 }
 
 // BatchAddPages takes a batch of pages and inserts them, not giving a fuck whether or not they clash
 func (s *Storage) BatchAddPages(pages []*Page) error {
-	sqlStr := fmt.Sprintf("INSERT INTO %s (page_id, host, path, url) VALUES ", s.PageTable)
+	valueStrings := make([]string, 0, len(pages))
 	vals := []interface{}{}
 
 	for _, page := range pages {
-		sqlStr += "(?, ?, ?, ?),"
+		valueStrings = append(valueStrings, "(?, ?, ?, ?)")
 		vals = append(vals, linkutils.Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
 	}
 
-	//trim the last ,
-	sqlStr = strings.TrimSuffix(sqlStr, ",")
-
-	// Add "fuck it, idc" to the end
-	sqlStr += " ON CONFLICT DO NOTHING"
+	sqlStr := fmt.Sprintf(
+		"INSERT INTO %s (page_id, host, path, url) VALUES %s ON CONFLICT DO NOTHING ",
+		s.PageTable,
+		strings.Join(valueStrings, ","),
+	)
 
 	//Replacing ? with $n for postgres
 	sqlStr = ReplaceSQL(sqlStr, "?")
 
 	//prepare the statement
-	stmt, _ := s.db.Prepare(sqlStr)
+	stmt, err := s.db.Prepare(sqlStr)
+	if err != nil {
+		return err
+	}
 	defer stmt.Close()
 
 	//format all vals at once
-	_, err := stmt.Exec(vals...)
+	_, err = stmt.Exec(vals...)
 
 	return err
 }
