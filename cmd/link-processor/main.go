@@ -107,11 +107,9 @@ func main() {
 		dbTableLink,
 	)
 	failOnError(err, "Failed to connect to postgres")
-	defer linkStorage.Close()
 
 	queue, err := linkqueue.NewLinkQueue(queueDataDir)
 	failOnError(err, "Failed to initialise queue")
-	defer queue.Close()
 
 	log.Println("Processor started!")
 
@@ -130,7 +128,7 @@ func main() {
 	failOnError(err, "Could not initialise link processor")
 
 	log.Println("Begin processing...")
-	sigs := make(chan os.Signal)
+	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGKILL)
 	processing := true
 	for processing {
@@ -148,5 +146,13 @@ func main() {
 	}
 
 	<-linkProcessor.GracefulShutdown()
-	log.Println("Shut down link processor")
+	log.Println("===== Shut down link processor =====")
+
+	linkStorage.Close()
+	log.Println("======= DB Connection closed =======")
+
+	queue.Close()
+	log.Println("======== Link Queue closed =========")
+
+	log.Println("====== Thank you, come again! ======")
 }

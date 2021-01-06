@@ -61,8 +61,15 @@ func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
 	go func() {
 		// Check if link/page batching has finished.
 		<-lp.linkBatcher.WaitUntilEmpty()
+		log.Println("Link batcher empty...")
+		lp.linkBatcher.KillWorkers()
+		log.Println("Link batcher shut down.")
+
 		<-lp.pageBatcher.WaitUntilEmpty()
-		lp.Close()
+		log.Println("Page batcher empty...")
+		lp.pageBatcher.KillWorkers()
+		log.Println("Page batcher shut down.")
+
 		readyToKill <- true
 	}()
 

@@ -98,7 +98,6 @@ func (pb *PageBatcher) SpawnWorkers(nWorkers int) {
 		doneChan := make(chan bool)
 		pb.killChannels = append(pb.killChannels, killChan)
 		pb.doneChannels = append(pb.doneChannels, doneChan)
-		pb.killChannels = append(pb.killChannels, killChan)
 		go pb.Worker(killChan, doneChan)
 	}
 }

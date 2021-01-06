@@ -35,43 +35,13 @@ services:
       options:
         max-size: "10k"
         max-file: "5"
-  # rabbitmq:
-  #   image: rabbitmq:3-management
-  #   container_name: rabbitmq
-  #   hostname: rabbitmq
-  #   restart: always
-  #   ports:
-  #     - 5672:5672
-  #     - 15672:15672
-  #   networks:
-  #     - rabbitmq
-  #   volumes:
-  #     - ./data/rabbitmq:/var/lib/rabbitmq
-  #   environment:
-  #     RABBITMQ_DEFAULT_USER: "guest"
-  #     RABBITMQ_DEFAULT_PASS: "guest"
-  # link-injector:
-  #   image: jjhaslanded/link-injector
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile-link-injector
-  #   restart: on-failure
-  #   environment:
-  #     RABBIT_HOST: "rabbitmq"
-  #     RABBIT_PORT: "5672"
-  #     RABBIT_USERNAME: "guest"
-  #     RABBIT_PASSWORD: "guest"
-  #   depends_on:
-  #     - rabbitmq
-  #     - link-processor
-  #   networks:
-  #     - rabbitmq
   link-processor:
     image: jjhaslanded/link-processor
     build:
       context: .
       dockerfile: Dockerfile-link-processor
     restart: on-failure
+    stop_grace_period: 30s
     env_file:
       - database.env
     environment:
@@ -94,4 +64,3 @@ services:
 
 networks:
   db:
-  # rabbitmq:
