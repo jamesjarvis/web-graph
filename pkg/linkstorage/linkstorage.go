@@ -39,6 +39,11 @@ func NewStorage(
 	return storage, nil
 }
 
+// Close closes connections.
+func (s *Storage) Close() error {
+	return s.db.Close()
+}
+
 // Init initializes the PostgreSQL storage
 func (s *Storage) Init() error {
 	var err error

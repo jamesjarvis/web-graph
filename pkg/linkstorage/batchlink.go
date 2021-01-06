@@ -1,9 +1,12 @@
 package linkstorage
 
 import (
+	"fmt"
 	"log"
 	"net/url"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 //TODO: Write a batch consumer, that consumes links from a channel in batches of max 100 and writes to the database
@@ -97,11 +100,28 @@ func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
 	batchSize := len(links)
 	tempBatch := links
 	var err error
+	maxRetries := 20
+	var retryCount int
 	for batchSize >= 1 {
 		err = lb.s.BatchAddLinks(tempBatch[:batchSize])
 		if err != nil && batchSize > 1 {
 			batchSize = batchSize / 2
 			continue
+		}
+		if batchSize == 1 {
+			if pqErr, ok := err.(*pq.Error); ok {
+				// Here err is of type *pq.Error, you may inspect all its fields, e.g.:
+				if pqErr.Code == "23503" {
+					// Here the error code is a foreign_key_violation, and we can maaaybe assume that the link will eventually be added so we retry this for 10 seconds or so.
+					fmt.Printf("retrying foreign_key_violation %d/%d\n", retryCount+1, maxRetries)
+					retryCount++
+					if retryCount == maxRetries {
+						break
+					}
+					time.Sleep(20 * time.Millisecond)
+					continue
+				}
+			}
 		}
 		// We can reach here if the batch size == 1, in which case we skip that message and continue because fuck it.
 		tempBatch = tempBatch[batchSize:]

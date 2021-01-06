@@ -14,24 +14,19 @@ package main
 // Then send all URLs back to the rabbitmq channel.
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 
-	"github.com/assembla/cony"
 	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
+	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 	_ "github.com/lib/pq"
-	"github.com/streadway/amqp"
 )
 
 var (
-	rabbitHost     = os.Getenv("RABBIT_HOST")
-	rabbitPort     = os.Getenv("RABBIT_PORT")
-	rabbitUser     = os.Getenv("RABBIT_USERNAME")
-	rabbitPassword = os.Getenv("RABBIT_PASSWORD")
-
 	dbUser     = os.Getenv("POSTGRES_USER")
 	dbPassword = os.Getenv("POSTGRES_PASSWORD")
 	dbDatabase = os.Getenv("POSTGRES_DB")
@@ -39,26 +34,7 @@ var (
 	dbTablePage = "pages_visited"
 	dbTableLink = "links_visited"
 
-	rabbitMQURL = "amqp://" + rabbitUser + ":" + rabbitPassword + "@" + rabbitHost + ":" + rabbitPort + "/"
-	channelName = "links"
-
-	que = &cony.Queue{
-		AutoDelete: false,
-		Name:       channelName,
-		Durable:    true,
-		Args:       amqp.Table{"x-queue-mode": "lazy"},
-	}
-	exc = cony.Exchange{
-		Name:       "links-exchange",
-		Kind:       "fanout",
-		AutoDelete: false,
-		Durable:    true,
-	}
-	bnd = cony.Binding{
-		Queue:    que,
-		Exchange: exc,
-		Key:      "",
-	}
+	queueDataDir = os.Getenv("QUEUE_DATA")
 )
 
 func failOnError(err error, msg string) {
@@ -67,48 +43,55 @@ func failOnError(err error, msg string) {
 	}
 }
 
-func main() {
-	// Construct new client with the flag url
-	// and default backoff policy
-	c := cony.NewClient(
-		cony.URL(rabbitMQURL),
-		cony.Backoff(cony.DefaultBackoff),
-	)
+func seedInitialURLs(q *linkqueue.LinkQueue) error {
+	interestingURLs := []string{
+		"https://news.ycombinator.com/",
+		"https://www.startups-list.com/",
+		"https://www.indiehackers.com/",
+		"https://www.cisco.com/",
+		"https://thoughtmachine.net/",
+		"https://www.bbc.co.uk/",
+		"https://www.bbc.co.uk/news",
+		"https://www.kent.ac.uk/",
+		"https://home.cern/",
+		"https://www.nasa.gov/",
+		"https://www.engadget.com/",
+		"https://www.webdesign-inspiration.com/",
+		"https://moz.com/top500",
+		"https://www.wired.co.uk/",
+		"https://www.macrumors.com/",
+		"https://jamesjarvis.io/projects",
+		"https://en.wikipedia.org/wiki/Elon_Musk's_Tesla_Roadster",
+		"https://en.wikipedia.org/wiki/Six_Degrees_of_Kevin_Bacon",
+		"https://www.nhm.ac.uk/",
+		"https://www.sciencemuseum.org.uk/",
+		"https://www.businessinsider.com/uk-tech-100-2019-most-important-interesting-and-impactful-people-uk-tech-2019-9?r=US&IR=T#97-the-undergraduate-students-who-beat-apple-to-building-a-web-player-for-apple-music-4",
+		"http://info.cern.ch/hypertext/WWW/TheProject.html",
+		"https://www.nytimes.com/",
+		"https://www.kent.ac.uk/courses/profiles/undergraduate/computer-science-year-industry-musish",
+		"https://www.si.edu/",
+	}
 
-	pc := cony.NewClient(
-		cony.URL(rabbitMQURL),
-		cony.Backoff(cony.DefaultBackoff),
-	)
-
-	// Declarations
-	// The queue name will be supplied by the AMQP server
-	c.Declare([]cony.Declaration{
-		cony.DeclareQueue(que),
-		cony.DeclareExchange(exc),
-		cony.DeclareBinding(bnd),
-	})
-	pc.Declare([]cony.Declaration{
-		cony.DeclareQueue(que),
-		cony.DeclareExchange(exc),
-		cony.DeclareBinding(bnd),
-	})
-
-	// Declare and register a publisher
-	// with the cony client
-	pbl := cony.NewPublisher(exc.Name, "")
-	pc.Publish(pbl)
-
-	go func() {
-		for pc.Loop() {
-			select {
-			case err := <-pc.Errors():
-				log.Printf("Publishing client error: %v\n", err)
-			case blocked := <-pc.Blocking():
-				log.Printf("Publishing client is blocked %v\n", blocked)
-			}
+	for _, u := range interestingURLs {
+		uri, err := url.Parse(u)
+		if err != nil {
+			return err
 		}
-	}()
 
+		err = q.EnQueue(uri)
+		if err != nil {
+			return err
+		}
+	}
+
+	if q.Length() == 0 {
+		return errors.New("Queue is still empty??")
+	}
+
+	return nil
+}
+
+func main() {
 	// Initialise database connections
 	linkStorage, err := linkstorage.NewStorage(
 		fmt.Sprintf(
@@ -122,47 +105,38 @@ func main() {
 		dbTableLink,
 	)
 	failOnError(err, "Failed to connect to postgres")
+	defer linkStorage.Close()
+
+	queue, err := linkqueue.NewLinkQueue(queueDataDir)
+	failOnError(err, "Failed to initialise queue")
+	defer queue.Close()
+
+	log.Println("Processor started!")
+
+	if !queue.ContainsItems() {
+		log.Println("Queue empty, seeding initial URLs to Queue...")
+		err := seedInitialURLs(queue)
+		failOnError(err, "Failed to seed initial URLs")
+	}
 
 	linkProcessor, err := linkprocessor.NewLinkProcessor(
 		linkStorage,
 		500,
-		pbl,
+		queue,
 		1,
 	)
-	if err != nil {
-		log.Fatal(err)
-	}
+	failOnError(err, "Could not initialise link processor")
 
-	// Declare and register a consumer
-	cns := cony.NewConsumer(
-		que,
-	)
-	c.Consume(cns)
-	for c.Loop() {
+	log.Println("Begin processing...")
+
+	for {
 		select {
-		case msg := <-cns.Deliveries():
-			// Parse the URL from rabbitmq.
-			uri, err := url.Parse(string(msg.Body))
-			if err != nil {
-				log.Printf("Bad URL received: %v", string(msg.Body))
-				msg.Reject(false)
-				break
-			}
-
-			err = linkProcessor.ProcessURL(uri)
+		case url := <-queue.DeQueue():
+			err = linkProcessor.ProcessURL(url)
 			if err != nil {
 				log.Printf("Error whilst processing: %v", err)
-				msg.Reject(false)
 				break
 			}
-
-			msg.Ack(false)
-		case err := <-cns.Errors():
-			log.Printf("Consumer error: %v\n", err)
-		case err := <-c.Errors():
-			log.Printf("Consumer client error: %v\n", err)
-		case blocked := <-c.Blocking():
-			log.Printf("Client is blocked %v\n", blocked)
 		}
 	}
 }

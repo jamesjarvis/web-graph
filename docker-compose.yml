@@ -7,7 +7,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - database-data:/var/lib/postgresql/data/
+      - ./data/db:/var/lib/postgresql/data/
     networks:
       - db
     logging:
@@ -23,47 +23,49 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - pgadmin-data:/var/lib/pgadmin
+      - ./data/pgadmin:/var/lib/pgadmin
     links:
       - "database:pgsql-server"
     depends_on:
       - database
+    networks:
+      - db
     logging:
       driver: "json-file"
       options:
         max-size: "10k"
         max-file: "5"
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq
-    hostname: rabbitmq
-    restart: always
-    ports:
-      - 5672:5672
-      - 15672:15672
-    networks:
-      - rabbitmq
-    volumes:
-      - ./data/rabbitmq:/var/lib/rabbitmq
-    environment:
-      RABBITMQ_DEFAULT_USER: "guest"
-      RABBITMQ_DEFAULT_PASS: "guest"
-  link-injector:
-    image: jjhaslanded/link-injector
-    build:
-      context: .
-      dockerfile: Dockerfile-link-injector
-    restart: on-failure
-    environment:
-      RABBIT_HOST: "rabbitmq"
-      RABBIT_PORT: "5672"
-      RABBIT_USERNAME: "guest"
-      RABBIT_PASSWORD: "guest"
-    depends_on:
-      - rabbitmq
-      - link-processor
-    networks:
-      - rabbitmq
+  # rabbitmq:
+  #   image: rabbitmq:3-management
+  #   container_name: rabbitmq
+  #   hostname: rabbitmq
+  #   restart: always
+  #   ports:
+  #     - 5672:5672
+  #     - 15672:15672
+  #   networks:
+  #     - rabbitmq
+  #   volumes:
+  #     - ./data/rabbitmq:/var/lib/rabbitmq
+  #   environment:
+  #     RABBITMQ_DEFAULT_USER: "guest"
+  #     RABBITMQ_DEFAULT_PASS: "guest"
+  # link-injector:
+  #   image: jjhaslanded/link-injector
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile-link-injector
+  #   restart: on-failure
+  #   environment:
+  #     RABBIT_HOST: "rabbitmq"
+  #     RABBIT_PORT: "5672"
+  #     RABBIT_USERNAME: "guest"
+  #     RABBIT_PASSWORD: "guest"
+  #   depends_on:
+  #     - rabbitmq
+  #     - link-processor
+  #   networks:
+  #     - rabbitmq
   link-processor:
     image: jjhaslanded/link-processor
     build:
@@ -73,15 +75,12 @@ services:
     env_file:
       - database.env
     environment:
-      RABBIT_HOST: "rabbitmq"
-      RABBIT_PORT: "5672"
-      RABBIT_USERNAME: "guest"
-      RABBIT_PASSWORD: "guest"
+      QUEUE_DATA: "/queue_data"
+    volumes:
+      - ./data/queue:/queue_data
     depends_on:
-      - rabbitmq
       - database
     networks:
-      - rabbitmq
       - db
     logging:
       driver: "json-file"
@@ -89,10 +88,10 @@ services:
         max-size: "200k"
         max-file: "10"
 
-volumes:
-  database-data:
-  pgadmin-data:
+# volumes:
+#   database-data:
+#   pgadmin-data:
 
 networks:
   db:
-  rabbitmq:
+  # rabbitmq:

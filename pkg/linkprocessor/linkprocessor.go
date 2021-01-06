@@ -10,11 +10,10 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/assembla/cony"
 	"github.com/jamesjarvis/web-graph/pkg/linkcache"
+	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
-	"github.com/streadway/amqp"
 )
 
 // LinkProcessor contains all connections necessary for accessing the cache, db and channel for sending urls back to rabbitmq.
@@ -23,14 +22,14 @@ type LinkProcessor struct {
 	linkBatcher *linkstorage.LinkBatcher
 	pageBatcher *linkstorage.PageBatcher
 	storage     *linkstorage.Storage
-	pbl         *cony.Publisher
+	queue       *linkqueue.LinkQueue
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
 func NewLinkProcessor(
 	storage *linkstorage.Storage,
 	batchSize int,
-	pbl *cony.Publisher,
+	queue *linkqueue.LinkQueue,
 	numWorkers int,
 ) (*LinkProcessor, error) {
 	pageBatcher, err := linkstorage.NewPageBatcher(
@@ -51,7 +50,7 @@ func NewLinkProcessor(
 		storage:     storage,
 		linkBatcher: linkBatcher,
 		pageBatcher: pageBatcher,
-		pbl:         pbl,
+		queue:       queue,
 	}, nil
 }
 
@@ -83,11 +82,7 @@ func (lp *LinkProcessor) MarkURLVisited(u *url.URL) {
 }
 
 func (lp *LinkProcessor) queueURL(u *url.URL) error {
-	return lp.pbl.Publish(amqp.Publishing{
-		ContentType:  "text/plain",
-		Body:         []byte(u.String()),
-		DeliveryMode: amqp.Persistent,
-	})
+	return lp.queue.EnQueue(u)
 }
 
 // ScrapeLinksFromURL takes a url to scrape, retrieves the page and returns all links found.
