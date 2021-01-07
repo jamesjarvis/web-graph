@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/beeker1121/goque"
+	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
 
 // This is a simple thread safe queue for appending and retrieving messages from a persistent, local queue.
@@ -44,7 +45,7 @@ func (q *LinkQueue) DeQueue() <-chan *url.URL {
 				continue
 			}
 
-			link, err = url.Parse(item.ToString())
+			link, err = linkutils.ParseURL(item.ToString())
 			if err != nil {
 				log.Printf("Error whilst converting message %v", err)
 				continue

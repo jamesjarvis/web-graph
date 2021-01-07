@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
@@ -166,6 +167,7 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 			if !exists {
 				return
 			}
+			href = strings.TrimSpace(href)
 
 			link, err := url.Parse(href)
 			if err != nil {

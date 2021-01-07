@@ -111,7 +111,7 @@ func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
 					if retryCount == maxRetries {
 						break
 					}
-					time.Sleep(20 * time.Millisecond)
+					time.Sleep(time.Duration(retryCount) * 20 * time.Millisecond)
 					continue
 				}
 			}

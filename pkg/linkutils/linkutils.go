@@ -2,6 +2,7 @@ package linkutils
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -50,4 +51,18 @@ func Hash(u *url.URL) string {
 	h.Write([]byte(u.Hostname() + u.EscapedPath()))
 	bs := h.Sum(nil)
 	return fmt.Sprintf("%x", bs)
+}
+
+// ParseURL is a helper function that takes a string url, trims whitespace,
+// parses into a url.URL and finally checks whether it fits our url requirements.
+func ParseURL(s string) (*url.URL, error) {
+	s = strings.TrimSpace(s)
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	if !ScrapeDaTing(u) {
+		return nil, errors.New("We do not want to scrape this URL")
+	}
+	return u, nil
 }

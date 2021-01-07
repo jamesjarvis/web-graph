@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,6 +24,7 @@ import (
 	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
+	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 	_ "github.com/lib/pq"
 )
 
@@ -75,7 +75,7 @@ func seedInitialURLs(q *linkqueue.LinkQueue) error {
 	}
 
 	for _, u := range interestingURLs {
-		uri, err := url.Parse(u)
+		uri, err := linkutils.ParseURL(u)
 		if err != nil {
 			return err
 		}
