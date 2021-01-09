@@ -43,7 +43,7 @@
     return tempData
   }
 
-  const apiURL = "http://api.jamesjarvis.io"
+  const apiURL = "https://api.jamesjarvis.io"
   // const apiURL = "http://192.168.68.144"
   const jjHomepage = {
     "node":{
@@ -97,7 +97,7 @@
       if (newData.links) {
         newData.links.forEach((item) => {
           if (!linkMap.has(item)) {
-            console.log("node being linked to has not been added yet", item);
+            // console.log("node being linked to has not been added yet", item);
             linkMap.set(item, true);
             tempData.nodes.push({
               "id": item,
