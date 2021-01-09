@@ -21,7 +21,9 @@ docker-compose up --build -d && docker-compose logs -f crawler
 ```
 
 Then open <localhost:8080> and enter your credentials from [Your database environment file](./database.env.example)
-And open <localhost:15672> with guest, guest to see the queue status.
+Note, if running this on an rpi, stop the pgadmin service with `docker compose stop pgadmin` as it is not compiled for ARM.
+
+To see the UI, open the `frontend/index.html` file in a browser.
 
 ## TODO
 

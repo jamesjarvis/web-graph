@@ -57,6 +57,25 @@ services:
       options:
         max-size: "200k"
         max-file: "10"
+  link-api:
+    image: jjhaslanded/link-api
+    build:
+      context: .
+      dockerfile: Dockerfile-link-api
+    restart: on-failure
+    ports:
+      - "8081:8080"
+    env_file:
+      - database.env
+    depends_on:
+      - database
+    networks:
+      - db
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
 
 # volumes:
 #   database-data:

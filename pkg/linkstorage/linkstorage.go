@@ -95,12 +95,80 @@ func (s *Storage) Init() error {
 func (s *Storage) CheckPageExists(u *url.URL) (bool, error) {
 	var isVisited bool
 
-	query := fmt.Sprintf(`SELECT EXISTS(SELECT page_id FROM %s WHERE page_id = $1)`, s.PageTable)
+	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE page_id = $1)`, s.PageTable)
 
 	s.pageLock.RLock()
 	err := s.db.QueryRow(query, linkutils.Hash(u)).Scan(&isVisited)
 	s.pageLock.RUnlock()
 	return isVisited, err
+}
+
+// GetPage retrieves info about the page hash if it exists.
+func (s *Storage) GetPage(pageHash string) (*Page, error) {
+	query := fmt.Sprintf(`SELECT url FROM %s WHERE page_id = $1`, s.PageTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	var urlString string
+	s.pageLock.RLock()
+	err = s.db.QueryRow(query, pageHash).Scan(&urlString)
+	s.pageLock.RUnlock()
+	if err == sql.ErrNoRows {
+		// Return nothing if nothing found
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	u, err := url.Parse(urlString)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Page{
+		U: u,
+	}, nil
+}
+
+// GetPageHashesFromHost retrieves the page hashes of all pages with this host.
+func (s *Storage) GetPageHashesFromHost(host string, limit int) ([]string, error) {
+	query := fmt.Sprintf(`SELECT page_id FROM %s WHERE host = $1 LIMIT $2`, s.PageTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	var pageHashes []string
+	s.pageLock.RLock()
+	rows, err := s.db.Query(query, host, limit)
+	s.pageLock.RUnlock()
+	defer rows.Close()
+	for rows.Next() {
+		var pageID string
+		err = rows.Scan(&pageID)
+		if err != nil {
+			return nil, err
+		}
+		pageHashes = append(pageHashes, pageID)
+	}
+	// get any error encountered during iteration
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return pageHashes, nil
 }
 
 // AddPage first checks that it does not exist, and then inserts the page
@@ -126,12 +194,80 @@ func (s *Storage) AddPage(page *Page) error {
 func (s *Storage) CheckLinkExists(fromU *url.URL, toU *url.URL) (bool, error) {
 	var isVisited bool
 
-	query := fmt.Sprintf(`SELECT EXISTS(SELECT to_page_id FROM %s WHERE from_page_id = $1 AND to_page_id = $2)`, s.LinkTable)
+	query := fmt.Sprintf(`SELECT EXISTS(SELECT 1 FROM %s WHERE from_page_id = $1 AND to_page_id = $2)`, s.LinkTable)
 
 	// s.linkLock.RLock()
 	err := s.db.QueryRow(query, linkutils.Hash(fromU), linkutils.Hash(toU)).Scan(&isVisited)
 	// s.linkLock.RUnlock()
 	return isVisited, err
+}
+
+// GetLinksFrom retrieves the links from this page hash.
+func (s *Storage) GetLinksFrom(pageHash string, limit int) ([]string, error) {
+	query := fmt.Sprintf(`SELECT to_page_id FROM %s WHERE from_page_id = $1 LIMIT $2`, s.LinkTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	var pageHashes []string
+	s.linkLock.RLock()
+	rows, err := s.db.Query(query, pageHash, limit)
+	s.linkLock.RUnlock()
+	defer rows.Close()
+	for rows.Next() {
+		var pageID string
+		err = rows.Scan(&pageID)
+		if err != nil {
+			return nil, err
+		}
+		pageHashes = append(pageHashes, pageID)
+	}
+	// get any error encountered during iteration
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return pageHashes, nil
+}
+
+// GetLinksTo retrieves the links from this page hash.
+func (s *Storage) GetLinksTo(pageHash string, limit int) ([]string, error) {
+	query := fmt.Sprintf(`SELECT from_page_id FROM %s WHERE to_page_id = $1 LIMIT $2`, s.LinkTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	var pageHashes []string
+	s.linkLock.RLock()
+	rows, err := s.db.Query(query, pageHash, limit)
+	s.linkLock.RUnlock()
+	defer rows.Close()
+	for rows.Next() {
+		var pageID string
+		err = rows.Scan(&pageID)
+		if err != nil {
+			return nil, err
+		}
+		pageHashes = append(pageHashes, pageID)
+	}
+	// get any error encountered during iteration
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return pageHashes, nil
 }
 
 // AddLink first checks that it does not exist, and then inserts the page
