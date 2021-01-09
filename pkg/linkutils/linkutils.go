@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,7 +30,19 @@ func ScrapeDaTing(u *url.URL) bool {
 	if _, ok = ignoreHosts[u.Host]; ok {
 		return false
 	}
-	return true
+	return IsNiceFileType(u)
+}
+
+// IsNiceFileType returns true if the file extension is of type html (or unknown)
+func IsNiceFileType(u *url.URL) bool {
+	fileExtension := filepath.Ext(u.EscapedPath())
+	if fileExtension == ".html" || fileExtension == ".htm" {
+		return true
+	}
+	if fileExtension == "" {
+		return true
+	}
+	return false
 }
 
 // HappyResponse returns true if we want to continue scraping this thing.
