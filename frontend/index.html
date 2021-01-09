@@ -6,6 +6,8 @@
   <script src="https://unpkg.com/babel-standalone"></script>
 
   <script src="https://unpkg.com/react-force-graph-2d"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
   <!--<script src="../../src/packages/react-force-graph-3d/dist/react-force-graph-3d.js"></script>-->
 
   <!-- <script src="../datasets/random-data.js"></script> -->
@@ -16,76 +18,52 @@
 
 <script type="text/jsx">
   const { useState, useMemo, useCallback } = React;
-  const initialData = {
-    "nodes": [
-      {
-        "id": "ABC",
-        "group": "jamesjarvis.io",
-        "url": "https://jamesjarvis.io",
-      },
-      {"id": "DEF", "group": "unknown", "url": "unknown"},
-      {"id": "GHI", "group": "unknown", "url": "unknown"},
-    ],
-    "links": [
-      {"source": "ABC", "target": "DEF"},
-      {"source": "ABC", "target": "GHI"},
-    ]
-  }
-  let nodeInfoMap = new Map([
-    ['ABC', {
-      "node": {
-        "id": "ABC",
-        "group": "jamesjarvis.io",
-        "url": "https://jamesjarvis.io",
-      },
-      "links": [
-        "DEF",
-        "GHI",
-      ]
-    }],
-    ['DEF', {
-      "node": {
-        "id": "DEF",
-        "group": "wikipedia.com",
-        "url": "https://wikipedia.com/united-kingdom",
-      },
-      "links": [
-        "GHI",
-      ]
-    }],
-    ['GHI', {
-      "node": {
-        "id": "GHI",
-        "group": "wikipedia.com",
-        "url": "https://wikipedia.com/phone-box",
-      },
-      "links": [
-        "DEF",
-        "JKL",
-      ]
-    }],
-    ['JKL', {
-      "node": {
-        "id": "JKL",
-        "group": "google.com",
-        "url": "https://google.com/bullshit",
-      },
-      "links": [
-        "MNO",
-      ]
-    }],
-    ['MNO', {
-      "node": {
-        "id": "MNO",
-        "group": "someblog.com",
-        "url": "https://someblog.com/bullshit",
-      },
-      "links": [
-        "ABC",
-      ]
-    }]
-  ]);
+  const formatInitialData = (unformattedData) => {
+    let tempData = {
+      "nodes": [],
+      "links": [],
+    }
 
+    tempData.nodes.push(unformattedData.node)
+
+    unformattedData.links.forEach((item) => {
+      if (item != unformattedData.node.id) {
+        tempData.nodes.push({
+            "id": item,
+            "group": "unknown",
+        })
+      }
+      tempData.links.push({
+        "source": unformattedData.node.id,
+        "target": item,
+      })
+    })
+
+    return tempData
+  }
+
+  const jjHomepage = {
+    "node":{
+      "id":"5bc63ce53c8aaede0889ee9e90276affbbba7573",
+      "group":"jamesjarvis.io",
+      "url":"https://jamesjarvis.io/"
+    },
+    "links":[
+      "4a524f2adcff05c852710d31e68c93fdb8d9e780",
+      "5ae39953fb959335d106e072d277b516b819833a",
+      "5bc63ce53c8aaede0889ee9e90276affbbba7573",
+      "77eb07c78b0a28c539fa31eedb2b91c383270c44",
+      "add36bb8a2c3ec79767358c948af7686e09eb1c9",
+      "c554e150f5d4dac82eb2b976df7e07aad96ff614",
+      "ca2b854ae3f3613b435b60c1b8f301259309773b",
+      "daf1878303b27f7758daa5082afb39f8c7eb3586",
+      "dcabc0b5a7032fc66f8b4afd727ebe323d0b9efb",
+      "dfeae03b732b0918d1311580770b1d9edd7f42bf",
+      "e518da42a48097ceb7648a9961428e300f2db545",
+      "f80eb10d9d31f69bd3a3db0d23dcd91e432ef277"
+      ]
+    }
+  const initialData = formatInitialData(jjHomepage)
   let loadedNodeMap = new Map([
     [initialData.nodes[0].id, true],
   ]);
@@ -99,35 +77,22 @@
   const ExpandableGraph = () => {
     const [data, setData] = useState(initialData);
 
-    // getNodeInfo takes the id of a node, and retrieves it's info.
-    const getNodeInfo = (nodeID) => {
-      return nodeInfoMap.get(nodeID);
-    }
+    const updateData = (newData, existingID) => {
+      let tempData = {
+        "nodes": data.nodes,
+        "links": data.links,
+      };
 
-    const handleNodeClick = useCallback(node => {
-      if (!loadedNodeMap.has(node.id)) {
-        // If this node has not been loaded yet, then load the new data into the graph.
-        loadedNodeMap.set(node.id, true);
-        let tempData = {
-          "nodes": data.nodes,
-          "links": data.links,
-        };
-
-        let addingNodeData = getNodeInfo(node.id);
-        if (!addingNodeData) {
-          console.log("nothing found");
-          return
-        }
-
-        // The node has not been loaded, so we need to go through the existing data.
-        const objIndex = tempData.nodes.findIndex((n => n.id == node.id));
-        // Update node properties.
-        tempData.nodes[objIndex].id = addingNodeData.node.id;
-        tempData.nodes[objIndex].group = addingNodeData.node.group;
-        tempData.nodes[objIndex].color = null;
+      // The node has not been loaded, so we need to go through the existing data.
+      const objIndex = tempData.nodes.findIndex((n => n.id == existingID));
+      // Update node properties.
+      tempData.nodes[objIndex].id = newData.node.id;
+      tempData.nodes[objIndex].group = newData.node.group;
+      tempData.nodes[objIndex].color = null;
 
 
-        addingNodeData.links.forEach((item) => {
+      if (newData.links) {
+        newData.links.forEach((item) => {
           if (!linkMap.has(item)) {
             console.log("node being linked to has not been added yet", item);
             linkMap.set(item, true);
@@ -138,13 +103,33 @@
           }
           tempData.links.push(
             {
-              "source": addingNodeData.node.id,
+              "source": newData.node.id,
               "target": item,
             }
           )
         });
+      }
 
-        setData(tempData);
+      setData(tempData);
+    }
+
+    // getNodeInfo takes the id of a node, and retrieves it's info.
+    const getNodeInfo = (nodeID) => {
+      axios.get('http://localhost:8081/page/'+nodeID)
+    	  .then(function (response) {
+          updateData(response.data, nodeID);
+    	  })
+    	  .catch(function (error) {
+          console.log("nothing found")
+    	    console.log(error);
+    	  });
+    }
+
+    const handleNodeClick = useCallback(node => {
+      if (!loadedNodeMap.has(node.id)) {
+        // If this node has not been loaded yet, then load the new data into the graph.
+        loadedNodeMap.set(node.id, true);
+        getNodeInfo(node.id);
       } else {
         console.log("already added node");
       }

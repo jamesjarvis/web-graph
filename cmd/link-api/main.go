@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 )
@@ -56,6 +57,15 @@ func main() {
 	defer linkStorage.Close()
 
 	r := gin.Default()
+
+	corsConfig := cors.DefaultConfig()
+
+	// OPTIONS method for ReactJS
+	corsConfig.AddAllowMethods("OPTIONS")
+	corsConfig.AllowAllOrigins = true
+
+	// Register the middleware
+	r.Use(cors.New(corsConfig))
 
 	r.GET("/page/:id", func(c *gin.Context) {
 		id := c.Param("id")
