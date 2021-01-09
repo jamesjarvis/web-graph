@@ -18,9 +18,22 @@ var (
 )
 
 const (
-	dbTablePage = "pages_visited"
-	dbTableLink = "links_visited"
-	queryLimit  = 100
+	dbTablePage   = "pages_visited"
+	dbTableLink   = "links_visited"
+	queryLimit    = 100
+	welcomeString = `Welcome to the web-graph!
+You can find out more about this project at: https://github.com/jamesjarvis/web-graph
+If you want to explore the graph's UI you can visit: https://jamesjarvis.github.io/web-graph/
+
+If you want to just explore the API, there are the following paths:
+/									- this page
+/page/:id					- pass a page hash and retrieve info about the page, and all links from the page
+/pages/:host			- easy way to find page hashes from a particular host (such as "wikipedia.com")
+/linksFrom/:id		- pass a page hash and retrieve all links from this page
+/linksTo/:id			- pass a page hash and retrieve all links to this page (that have been found so far, def not exhaustive)
+/countLinks				- returns the number of links found
+/countPages				- returns the number of pages found
+`
 )
 
 type OutputJSON struct {
@@ -66,6 +79,10 @@ func main() {
 
 	// Register the middleware
 	r.Use(cors.New(corsConfig))
+
+	r.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, welcomeString)
+	})
 
 	r.GET("/page/:id", func(c *gin.Context) {
 		id := c.Param("id")
@@ -145,6 +162,28 @@ func main() {
 		}
 
 		c.JSON(http.StatusOK, hashes)
+	})
+
+	r.GET("/countLinks", func(c *gin.Context) {
+		numLinks, err := linkStorage.CountLinks()
+		if err != nil {
+			log.Println(err)
+			c.String(http.StatusInternalServerError, "Something wrong with DB?")
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"countLinks": numLinks})
+	})
+
+	r.GET("/countPages", func(c *gin.Context) {
+		numLinks, err := linkStorage.CountPages()
+		if err != nil {
+			log.Println(err)
+			c.String(http.StatusInternalServerError, "Something wrong with DB?")
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"countPages": numLinks})
 	})
 
 	log.Fatal(r.Run())

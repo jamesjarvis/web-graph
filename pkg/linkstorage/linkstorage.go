@@ -117,7 +117,7 @@ func (s *Storage) GetPage(pageHash string) (*Page, error) {
 	// Execute query
 	var urlString string
 	s.pageLock.RLock()
-	err = s.db.QueryRow(query, pageHash).Scan(&urlString)
+	err = stmt.QueryRow(pageHash).Scan(&urlString)
 	s.pageLock.RUnlock()
 	if err == sql.ErrNoRows {
 		// Return nothing if nothing found
@@ -151,7 +151,7 @@ func (s *Storage) GetPageHashesFromHost(host string, limit int) ([]string, error
 	// Execute query
 	var pageHashes []string
 	s.pageLock.RLock()
-	rows, err := s.db.Query(query, host, limit)
+	rows, err := stmt.Query(host, limit)
 	s.pageLock.RUnlock()
 	defer rows.Close()
 	for rows.Next() {
@@ -184,8 +184,15 @@ func (s *Storage) AddPage(page *Page) error {
 
 	query := fmt.Sprintf(`INSERT INTO %s (page_id, host, path, url) VALUES($1, $2, $3, $4);`, s.PageTable)
 
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
 	s.pageLock.Lock()
-	_, err = s.db.Exec(query, linkutils.Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
+	_, err = stmt.Exec(linkutils.Hash(page.U), page.U.Hostname(), page.U.EscapedPath(), page.U.String())
 	s.pageLock.Unlock()
 	return err
 }
@@ -216,7 +223,7 @@ func (s *Storage) GetLinksFrom(pageHash string, limit int) ([]string, error) {
 	// Execute query
 	var pageHashes []string
 	s.linkLock.RLock()
-	rows, err := s.db.Query(query, pageHash, limit)
+	rows, err := stmt.Query(pageHash, limit)
 	s.linkLock.RUnlock()
 	defer rows.Close()
 	for rows.Next() {
@@ -250,7 +257,7 @@ func (s *Storage) GetLinksTo(pageHash string, limit int) ([]string, error) {
 	// Execute query
 	var pageHashes []string
 	s.linkLock.RLock()
-	rows, err := s.db.Query(query, pageHash, limit)
+	rows, err := stmt.Query(pageHash, limit)
 	s.linkLock.RUnlock()
 	defer rows.Close()
 	for rows.Next() {
@@ -268,6 +275,48 @@ func (s *Storage) GetLinksTo(pageHash string, limit int) ([]string, error) {
 	}
 
 	return pageHashes, nil
+}
+
+// CountLinks retrieves the number of links scraped.
+func (s *Storage) CountLinks() (int, error) {
+	var count int
+	query := fmt.Sprintf(`SELECT COUNT(from_page_id) FROM %s`, s.LinkTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return count, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	err = stmt.QueryRow().Scan(&count)
+	if err != nil {
+		return count, err
+	}
+
+	return count, nil
+}
+
+// CountPages retrieves the number of pages scraped.
+func (s *Storage) CountPages() (int, error) {
+	var count int
+	query := fmt.Sprintf(`SELECT COUNT(page_id) FROM %s`, s.PageTable)
+
+	// Prepare query
+	stmt, err := s.db.Prepare(query)
+	if err != nil {
+		return count, err
+	}
+	defer stmt.Close()
+
+	// Execute query
+	err = stmt.QueryRow().Scan(&count)
+	if err != nil {
+		return count, err
+	}
+
+	return count, nil
 }
 
 // AddLink first checks that it does not exist, and then inserts the page
