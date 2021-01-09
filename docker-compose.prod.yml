@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  database:
+    volumes:
+      - "/mnt/mydisk/data/db:/var/lib/postgresql/data/"
+  pgadmin:
+    restart: "no"
+    volumes:
+      - "/mnt/mydisk/data/pgadmin:/var/lib/pgadmin"
+  link-processor:
+    volumes:
+      - "/mnt/mydisk/data/queue:/queue_data"
+  link-api:
+    ports:
+      - "80:8080"
