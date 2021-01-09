@@ -26,13 +26,13 @@ You can find out more about this project at: https://github.com/jamesjarvis/web-
 If you want to explore the graph's UI you can visit: https://jamesjarvis.github.io/web-graph/
 
 If you want to just explore the API, there are the following paths:
-/									- this page
-/page/:id					- pass a page hash and retrieve info about the page, and all links from the page
-/pages/:host			- easy way to find page hashes from a particular host (such as "wikipedia.com")
-/linksFrom/:id		- pass a page hash and retrieve all links from this page
-/linksTo/:id			- pass a page hash and retrieve all links to this page (that have been found so far, def not exhaustive)
-/countLinks				- returns the number of links found
-/countPages				- returns the number of pages found
+/                 - this page
+/page/:id         - pass a page hash and retrieve info about the page, and all links from the page
+/pages/:host      - easy way to find page hashes from a particular host (such as "wikipedia.com")
+/linksFrom/:id    - pass a page hash and retrieve all links from this page
+/linksTo/:id      - pass a page hash and retrieve all links to this page (that have been found so far, def not exhaustive)
+/countLinks       - returns the number of links found
+/countPages       - returns the number of pages found
 `
 )
 
