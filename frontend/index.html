@@ -43,6 +43,8 @@
     return tempData
   }
 
+  const apiURL = "http://api.jamesjarvis.io"
+  // const apiURL = "http://192.168.68.144"
   const jjHomepage = {
     "node":{
       "id":"5bc63ce53c8aaede0889ee9e90276affbbba7573",
@@ -116,7 +118,7 @@
 
     // getNodeInfo takes the id of a node, and retrieves it's info.
     const getNodeInfo = (nodeID) => {
-      axios.get('http://localhost:8081/page/'+nodeID)
+      axios.get(apiURL+'/page/'+nodeID)
     	  .then(function (response) {
           updateData(response.data, nodeID);
     	  })
