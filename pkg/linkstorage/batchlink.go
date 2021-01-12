@@ -31,7 +31,7 @@ type LinkBatcher struct {
 func NewLinkBatcher(maxBatch int, s *Storage) *LinkBatcher {
 	return &LinkBatcher{
 		maxBatch: maxBatch,
-		bufChan:  make(chan *Link, maxBatch*4),
+		bufChan:  make(chan *Link, maxBatch*8),
 		s:        s,
 	}
 }
@@ -88,35 +88,43 @@ func (lb *LinkBatcher) WaitUntilEmpty() <-chan bool {
 
 // ResilientBatchAddLinks shrinks the batch sizes until it eventually works :shrug:
 func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
-	batchSize := len(links)
-	tempBatch := links
-	var err error
 	maxRetries := 20
 	var retryCount int
+	var err error
+	batchSize := len(links)
+	tempBatch := links
+	// This simply backs off retries with this shitty foreign key error.
 	for batchSize >= 1 {
 		err = lb.s.BatchAddLinks(tempBatch[:batchSize])
-		if err != nil && batchSize > 1 {
-			batchSize = batchSize / 2
-			continue
-		}
-		if batchSize == 1 {
+		if err != nil {
+			// If we know this kind of error, we backoff for a bit and retry the same batch.
 			if pqErr, ok := err.(*pq.Error); ok {
 				// Here err is of type *pq.Error, you may inspect all its fields, e.g.:
 				if pqErr.Code == "23503" {
+					retryCount++
 					// Here the error code is a foreign_key_violation, and we can maaaybe assume that the link will eventually be added so we retry this for 10 seconds or so.
 					if retryCount > 10 {
 						log.Printf("retrying foreign_key_violation %d/%d\n", retryCount+1, maxRetries)
 					}
-					retryCount++
 					if retryCount == maxRetries {
+						log.Printf("Gave up after %d retries!\n", retryCount)
 						break
 					}
-					time.Sleep(time.Duration(retryCount) * 20 * time.Millisecond)
+					time.Sleep(time.Duration(retryCount) * 500 * time.Millisecond)
 					continue
 				}
 			}
+			// Here we do not know the kind of error, but know there is one.
+			if batchSize > 1 {
+				log.Printf("Encountered weird error with batch size %d, splitting the batch...", batchSize)
+				batchSize = batchSize / 2
+				// time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			log.Printf("Skipping failed message %d\n", len(links)-len(tempBatch))
 		}
-		// We can reach here if the batch size == 1, in which case we skip that message and continue because fuck it.
+		// Here the batch size == 1, and there is an error we do not know, so we decide to skip that message.
+		// Or if there was no error, we continue through the batch.
 		tempBatch = tempBatch[batchSize:]
 		batchSize = len(tempBatch)
 	}

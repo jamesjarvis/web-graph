@@ -17,6 +17,26 @@ import (
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
 
+var (
+	// Create HTTP client with timeout
+	transport = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		Proxy:           http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 100 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		IdleConnTimeout:       100 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 2 * time.Second,
+	}
+	client = &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+	}
+)
+
 // LinkProcessor contains all connections necessary for accessing the cache, db and channel for sending urls back to rabbitmq.
 type LinkProcessor struct {
 	cache       *linkcache.LinkCache
@@ -24,6 +44,7 @@ type LinkProcessor struct {
 	pageBatcher *linkstorage.PageBatcher
 	storage     *linkstorage.Storage
 	queue       *linkqueue.LinkQueue
+	urlChan     chan *url.URL
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
@@ -60,6 +81,8 @@ func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
 	readyToKill := make(chan bool)
 
 	go func() {
+		close(lp.urlChan)
+
 		// Check if link/page batching has finished.
 		<-lp.linkBatcher.WaitUntilEmpty()
 		log.Println("Link batcher empty...")
@@ -75,6 +98,26 @@ func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
 	}()
 
 	return readyToKill
+}
+
+// SpawnWorkers vaguely spawns up n number of workers, that can then be communicated with by pushing urls to the channel.
+func (lp *LinkProcessor) SpawnWorkers(n int) chan *url.URL {
+	lp.urlChan = make(chan *url.URL)
+
+	for w := 1; w <= n; w++ {
+		go func(workerID int) {
+			var err error
+			for u := range lp.urlChan {
+				err = lp.ProcessURL(u)
+				if err != nil {
+					log.Printf("Error whilst processing: %v", err)
+				}
+			}
+			log.Printf("Worker %d finished :)", workerID)
+		}(w)
+	}
+
+	return lp.urlChan
 }
 
 // Close immediately kills batching workers.
@@ -115,24 +158,6 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 		return nil, fmt.Errorf("We do not care about %s", u)
 	}
 
-	// Create HTTP client with timeout
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		Proxy:           http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   2 * time.Second,
-			KeepAlive: 100 * time.Second,
-			DualStack: true,
-		}).DialContext,
-		IdleConnTimeout:       100 * time.Second,
-		TLSHandshakeTimeout:   2 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-	}
-	client := &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: transport,
-	}
-
 	// Create and modify HTTP request before sending
 	request, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
@@ -171,7 +196,7 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 
 			link, err := url.Parse(href)
 			if err != nil {
-				log.Printf("Failed to parse URL: %v", href)
+				// log.Printf("Failed to parse URL: %v", href)
 				return
 			}
 
@@ -195,7 +220,7 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 	return foundLinks, nil
 }
 
-// Process takes a url and processes it.
+// ProcessURL takes a url and processes it.
 func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 	// Check if the URL has been visited already.
 	exists, err := lp.CheckURLExists(u)

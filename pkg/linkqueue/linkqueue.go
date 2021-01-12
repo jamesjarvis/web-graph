@@ -5,6 +5,7 @@ import (
 	"net/url"
 
 	"github.com/beeker1121/goque"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
 
@@ -13,16 +14,22 @@ import (
 // LinkQueue is the in memory link cache object.
 type LinkQueue struct {
 	queue *goque.Queue
+	cache *lru.Cache
 }
 
 // NewLinkQueue initialises the cache with a default expiration duration.
 func NewLinkQueue(dataDir string) (*LinkQueue, error) {
+	cache, err := lru.New(10000)
+	if err != nil {
+		return nil, err
+	}
 	queue, err := goque.OpenQueue(dataDir)
 	if err != nil {
 		return nil, err
 	}
 	return &LinkQueue{
 		queue: queue,
+		cache: cache,
 	}, nil
 }
 
@@ -60,8 +67,12 @@ func (q *LinkQueue) DeQueue() <-chan *url.URL {
 
 // EnQueue appends a url to the queue.
 func (q *LinkQueue) EnQueue(link *url.URL) error {
-	_, err := q.queue.EnqueueString(link.String())
-	return err
+	ok, _ := q.cache.ContainsOrAdd(linkutils.Hash(link), struct{}{})
+	if !ok {
+		_, err := q.queue.EnqueueString(link.String())
+		return err
+	}
+	return nil
 }
 
 // Length returns length of queue.

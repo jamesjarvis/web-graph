@@ -63,7 +63,7 @@ func (pb *PageBatcher) Worker(endSignal <-chan bool, doneChan chan<- bool) {
 		case <-endSignal:
 			doneChan <- true
 			return
-		case <-time.After(10 * time.Millisecond):
+		case <-time.After(time.Millisecond):
 			var pages []*Page
 
 		Remaining:
@@ -115,7 +115,7 @@ func (pb *PageBatcher) KillWorkers() {
 // AddPage is a lightweight function to just whack that page into the channel
 // Returns true if it added the page (hadn't been added previously)
 func (pb *PageBatcher) AddPage(page *Page) bool {
-	ok, _ := pb.Cache.ContainsOrAdd(linkutils.Hash(page.U), true)
+	ok, _ := pb.Cache.ContainsOrAdd(linkutils.Hash(page.U), struct{}{})
 	if !ok {
 		pb.bufChan <- page
 		return true

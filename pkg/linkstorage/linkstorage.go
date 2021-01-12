@@ -88,6 +88,20 @@ func (s *Storage) Init() error {
 		return err
 	}
 
+	query = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_to_page_id 
+	ON %s(to_page_id)`, s.LinkTable)
+
+	if _, err = s.db.Exec(query); err != nil {
+		return err
+	}
+
+	query = fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_page_host 
+	ON %s(host)`, s.PageTable)
+
+	if _, err = s.db.Exec(query); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -277,10 +291,12 @@ func (s *Storage) GetLinksTo(pageHash string, limit int) ([]string, error) {
 	return pageHashes, nil
 }
 
-// CountLinks retrieves the number of links scraped.
+// CountLinks retrieves an estimate of the number of links scraped.
 func (s *Storage) CountLinks() (int, error) {
 	var count int
-	query := fmt.Sprintf(`SELECT COUNT(from_page_id) FROM %s`, s.LinkTable)
+	query := fmt.Sprintf(`SELECT reltuples::bigint AS estimate 
+	FROM pg_class 
+	WHERE relname='%s'`, s.LinkTable)
 
 	// Prepare query
 	stmt, err := s.db.Prepare(query)
@@ -298,10 +314,12 @@ func (s *Storage) CountLinks() (int, error) {
 	return count, nil
 }
 
-// CountPages retrieves the number of pages scraped.
+// CountPages retrieves an estimate of the number of pages scraped.
 func (s *Storage) CountPages() (int, error) {
 	var count int
-	query := fmt.Sprintf(`SELECT COUNT(page_id) FROM %s`, s.PageTable)
+	query := fmt.Sprintf(`SELECT reltuples::bigint AS estimate 
+	FROM pg_class 
+	WHERE relname='%s'`, s.PageTable)
 
 	// Prepare query
 	stmt, err := s.db.Prepare(query)
@@ -355,7 +373,7 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 
 	for _, link := range links {
 		valueStrings = append(valueStrings, "(?, ?, ?)")
-		vals = append(vals, linkutils.Hash(link.FromU), linkutils.Hash(link.ToU), link.LinkText)
+		vals = append(vals, linkutils.Hash(link.FromU), linkutils.Hash(link.ToU), strings.ToValidUTF8(link.LinkText, ""))
 	}
 
 	sqlStr := fmt.Sprintf(

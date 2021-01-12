@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jamesjarvis/web-graph/pkg/linkprocessor"
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
@@ -32,6 +33,7 @@ var (
 	dbUser     = os.Getenv("POSTGRES_USER")
 	dbPassword = os.Getenv("POSTGRES_PASSWORD")
 	dbDatabase = os.Getenv("POSTGRES_DB")
+	dbHost     = os.Getenv("POSTGRES_HOST")
 
 	dbTablePage = "pages_visited"
 	dbTableLink = "links_visited"
@@ -97,10 +99,10 @@ func main() {
 	// Initialise database connections
 	linkStorage, err := linkstorage.NewStorage(
 		fmt.Sprintf(
-			"postgres://%s:%s@%s:5432/%s?sslmode=disable",
+			"postgres://%s:%s@%s:5432/%s?sslmode=disable&client_encoding=UTF8",
 			dbUser,
 			dbPassword,
-			"database",
+			dbHost,
 			dbDatabase,
 		),
 		dbTablePage,
@@ -128,8 +130,12 @@ func main() {
 	failOnError(err, "Could not initialise link processor")
 
 	log.Println("Begin processing...")
+	urlProcessingChan := linkProcessor.SpawnWorkers(2)
+
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGKILL)
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
 	processing := true
 	for processing {
 		select {
@@ -137,11 +143,9 @@ func main() {
 			processing = false
 			log.Printf("Received signal %s, shutting down gracefully...\n", s)
 		case url := <-queue.DeQueue():
-			err = linkProcessor.ProcessURL(url)
-			if err != nil {
-				log.Printf("Error whilst processing: %v", err)
-				break
-			}
+			urlProcessingChan <- url
+		case <-ticker.C:
+			log.Printf("%d urls in the queue", queue.Length())
 		}
 	}
 
