@@ -46,6 +46,7 @@ services:
       - database.env
     environment:
       QUEUE_DATA: "/queue_data"
+      POSTGRES_HOST: "database"
     volumes:
       - ./data/queue:/queue_data
     depends_on:
