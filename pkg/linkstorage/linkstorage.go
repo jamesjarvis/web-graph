@@ -3,10 +3,12 @@ package linkstorage
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
 )
@@ -37,6 +39,31 @@ func NewStorage(
 		return nil, err
 	}
 	return storage, nil
+}
+
+// KeepPingingOn periodically sends a ping to the db to keep the connection alive.
+// You can kill this process by sending a boolean to the returned channel.
+func (s *Storage) KeepPingingOn(d time.Duration) chan<- bool {
+	ticker := time.NewTicker(d)
+	killChan := make(chan bool)
+	go func() {
+		var err error
+		for {
+			select {
+			case <-killChan:
+				log.Println("Killing ping worker!")
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				err = s.db.Ping()
+				if err != nil {
+					log.Printf("Error from ping: %v", err)
+				}
+			}
+		}
+	}()
+
+	return killChan
 }
 
 // Close closes connections.

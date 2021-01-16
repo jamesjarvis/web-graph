@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,9 @@ func main() {
 	)
 	failOnError(err, "Failed to connect to postgres")
 	defer linkStorage.Close()
+
+	// Send Pings periodically to the DB
+	pingDoneChan := linkStorage.KeepPingingOn(10 * time.Second)
 
 	r := gin.Default()
 
@@ -187,4 +191,6 @@ func main() {
 	})
 
 	log.Fatal(r.Run())
+	// After this point, you can kill the ping worker.
+	pingDoneChan <- true
 }
