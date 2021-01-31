@@ -1,5 +1,37 @@
 <head>
-  <style> body { margin: 0; } </style>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+    }
+    .info {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      z-index: 999999;
+
+      border-radius: 15px;
+      padding: 10px;
+      padding-bottom: 0;
+
+      background-color: #CFE2FC;
+      background-image:
+         radial-gradient(ellipse farthest-corner at 80vw 15vh ,
+          rgba( 250, 240, 128, 0.5) 5%, rgba( 250,240,128,0) 95%
+      );
+      opacity: 0.9;
+    }
+    footer {
+      font-size: 10px;
+      text-align: center;
+
+      position: absolute;
+      z-index: -1;
+      bottom: 0px;
+      
+      width: 100%;
+    }
+  </style>
 
   <script src="https://unpkg.com/react@16/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@16/umd/react-dom.production.min.js"></script>
@@ -18,72 +50,21 @@
 <div id="graph"></div>
 
 <script type="text/jsx">
-  const { useState, useMemo, useCallback, useEffect } = React;
-  const formatInitialData = (unformattedData) => {
-    let tempData = {
-      "nodes": [],
-      "links": [],
-    }
-
-    tempData.nodes.push(unformattedData.node)
-
-    unformattedData.links.forEach((item) => {
-      if (item != unformattedData.node.id) {
-        tempData.nodes.push({
-            "id": item,
-            "group": "unknown",
-        })
-      }
-      tempData.links.push({
-        "source": unformattedData.node.id,
-        "target": item,
-      })
-    })
-
-    return tempData
-  }
+  const { useState, useCallback, useEffect } = React;
 
   const apiURL = "https://api.jamesjarvis.io"
   // const apiURL = "http://192.168.68.144"
-  // const jjHomepage = {
-  //   "node":{
-  //     "id":"5bc63ce53c8aaede0889ee9e90276affbbba7573",
-  //     "group":"jamesjarvis.io",
-  //     "url":"https://jamesjarvis.io/"
-  //   },
-  //   "links":[
-  //     "4a524f2adcff05c852710d31e68c93fdb8d9e780",
-  //     "5ae39953fb959335d106e072d277b516b819833a",
-  //     "5bc63ce53c8aaede0889ee9e90276affbbba7573",
-  //     "77eb07c78b0a28c539fa31eedb2b91c383270c44",
-  //     "add36bb8a2c3ec79767358c948af7686e09eb1c9",
-  //     "c554e150f5d4dac82eb2b976df7e07aad96ff614",
-  //     "ca2b854ae3f3613b435b60c1b8f301259309773b",
-  //     "daf1878303b27f7758daa5082afb39f8c7eb3586",
-  //     "dcabc0b5a7032fc66f8b4afd727ebe323d0b9efb",
-  //     "dfeae03b732b0918d1311580770b1d9edd7f42bf",
-  //     "e518da42a48097ceb7648a9961428e300f2db545",
-  //     "f80eb10d9d31f69bd3a3db0d23dcd91e432ef277"
-  //     ]
-  //   }
 
   const emptyData = {
     "nodes": [],
     "links": [],
   }
-  // const initialData = formatInitialData(jjHomepage)
   let loadedNodeMap = new Map();
-  //   [initialData.nodes[0].id, true],
-  // ]);
   let linkMap = new Map();
-    // [initialData.nodes[0].id, true],
-  // ]);
-  // initialData.links.forEach((link) => {
-  //   linkMap.set(link.target, true);
-  // })
 
   const ExpandableGraph = () => {
     const [currentPage, setCurrentPage] = useState("5bc63ce53c8aaede0889ee9e90276affbbba7573")
+    const [selectedNode, setSelectedNode] = useState()
     const [data, setData] = useState(emptyData);
 
     const updateData = (newData, existingID) => {
@@ -95,17 +76,29 @@
       if (tempData.nodes.length == 0) {
         // If the data is being added for the first time, we initialise the first node here.
         linkMap.set(newData.node.id, true);
+        let linksFrom = 0;
+        if (newData.links) {
+          linksFrom = newData.links.length;
+        }
         tempData.nodes.push({
           "id":     newData.node.id,
           "group:": newData.node.group,
+          "url":    newData.node.url,
+          "linksFrom":  linksFrom,
           "color":  null,
         })
       } else {
         // The node has not been loaded, so we need to go through the existing data.
         const objIndex = tempData.nodes.findIndex((n => n.id == existingID));
         // Update node properties.
+        let linksFrom = 0;
+        if (newData.links) {
+          linksFrom = newData.links.length;
+        }
         tempData.nodes[objIndex].id = newData.node.id;
         tempData.nodes[objIndex].group = newData.node.group;
+        tempData.nodes[objIndex].url = newData.node.url;
+        tempData.nodes[objIndex].linksFrom = linksFrom;
         tempData.nodes[objIndex].color = null;
       }
 
@@ -136,6 +129,12 @@
     const getNodeInfo = (nodeID) => {
       axios.get(apiURL+'/page/'+nodeID)
     	  .then(function (response) {
+          let linksFrom = 0;
+          if (response.data.links) {
+            linksFrom = response.data.links.length;
+          }
+          response.data.node.linksFrom = linksFrom;
+          setSelectedNode(response.data.node);
           updateData(response.data, nodeID);
     	  })
     	  .catch(function (error) {
@@ -157,16 +156,28 @@
         loadedNodeMap.set(node.id, true);
         getNodeInfo(node.id);
       } else {
+        setSelectedNode(node);
         console.log("already added node");
       }
     }, []);
 
-    return <ForceGraph2D
-      graphData={data}
-      nodeAutoColorBy="group"
-      linkDirectionalParticles={1}
-      onNodeClick={handleNodeClick}
-    />;
+    return <div>
+      {selectedNode &&
+        <div className="info">
+          <a href={selectedNode.url}>{selectedNode.url}</a>
+          <p>has {selectedNode.linksFrom}{selectedNode.linksFrom >=100 && "+"} links</p>
+        </div>
+      }
+      <ForceGraph2D
+        graphData={data}
+        nodeAutoColorBy="group"
+        linkDirectionalParticles={1}
+        onNodeClick={handleNodeClick}
+      />
+      <footer>
+        <p>Click on nodes to follow links. Links from the same host (ie: en.wikipedia.org) are grouped by colour. Blue nodes are unexplored.</p>
+      </footer>
+    </div>;
   };
 
   ReactDOM.render(
