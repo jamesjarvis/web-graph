@@ -26,9 +26,8 @@
       text-align: center;
 
       position: absolute;
-      z-index: -1;
       bottom: 0px;
-      
+
       width: 100%;
     }
   </style>
@@ -39,11 +38,6 @@
 
   <script src="https://unpkg.com/react-force-graph-2d"></script>
   <script src="https://unpkg.com/axios@v0.21.1/dist/axios.min.js"></script>
-
-
-  <!--<script src="../../src/packages/react-force-graph-3d/dist/react-force-graph-3d.js"></script>-->
-
-  <!-- <script src="../datasets/random-data.js"></script> -->
 </head>
 
 <body>
@@ -53,7 +47,6 @@
   const { useState, useCallback, useEffect } = React;
 
   const apiURL = "https://api.jamesjarvis.io"
-  // const apiURL = "http://192.168.68.144"
 
   const emptyData = {
     "nodes": [],
@@ -61,6 +54,13 @@
   }
   let loadedNodeMap = new Map();
   let linkMap = new Map();
+
+  const countLinksFrom = (data) => {
+    if (data.links) {
+      return data.links.length;
+    }
+    return 0;
+  }
 
   const ExpandableGraph = () => {
     const [currentPage, setCurrentPage] = useState("5bc63ce53c8aaede0889ee9e90276affbbba7573")
@@ -76,29 +76,21 @@
       if (tempData.nodes.length == 0) {
         // If the data is being added for the first time, we initialise the first node here.
         linkMap.set(newData.node.id, true);
-        let linksFrom = 0;
-        if (newData.links) {
-          linksFrom = newData.links.length;
-        }
         tempData.nodes.push({
-          "id":     newData.node.id,
-          "group:": newData.node.group,
-          "url":    newData.node.url,
-          "linksFrom":  linksFrom,
-          "color":  null,
+          "id":         newData.node.id,
+          "group:":     newData.node.group,
+          "url":        newData.node.url,
+          "linksFrom":  countLinksFrom(newData),
+          "color":      null,
         })
       } else {
         // The node has not been loaded, so we need to go through the existing data.
         const objIndex = tempData.nodes.findIndex((n => n.id == existingID));
         // Update node properties.
-        let linksFrom = 0;
-        if (newData.links) {
-          linksFrom = newData.links.length;
-        }
         tempData.nodes[objIndex].id = newData.node.id;
         tempData.nodes[objIndex].group = newData.node.group;
         tempData.nodes[objIndex].url = newData.node.url;
-        tempData.nodes[objIndex].linksFrom = linksFrom;
+        tempData.nodes[objIndex].linksFrom = countLinksFrom(newData);
         tempData.nodes[objIndex].color = null;
       }
 
@@ -129,11 +121,7 @@
     const getNodeInfo = (nodeID) => {
       axios.get(apiURL+'/page/'+nodeID)
     	  .then(function (response) {
-          let linksFrom = 0;
-          if (response.data.links) {
-            linksFrom = response.data.links.length;
-          }
-          response.data.node.linksFrom = linksFrom;
+          response.data.node.linksFrom = countLinksFrom(response.data);
           setSelectedNode(response.data.node);
           updateData(response.data, nodeID);
     	  })
@@ -176,6 +164,7 @@
       />
       <footer>
         <p>Click on nodes to follow links. Links from the same host (ie: en.wikipedia.org) are grouped by colour. Blue nodes are unexplored.</p>
+        <p>Made for fun by <a href="https://jamesjarvis.io">James</a></p>
       </footer>
     </div>;
   };
