@@ -18,7 +18,7 @@
 <div id="graph"></div>
 
 <script type="text/jsx">
-  const { useState, useMemo, useCallback } = React;
+  const { useState, useMemo, useCallback, useEffect } = React;
   const formatInitialData = (unformattedData) => {
     let tempData = {
       "nodes": [],
@@ -45,40 +45,46 @@
 
   const apiURL = "https://api.jamesjarvis.io"
   // const apiURL = "http://192.168.68.144"
-  const jjHomepage = {
-    "node":{
-      "id":"5bc63ce53c8aaede0889ee9e90276affbbba7573",
-      "group":"jamesjarvis.io",
-      "url":"https://jamesjarvis.io/"
-    },
-    "links":[
-      "4a524f2adcff05c852710d31e68c93fdb8d9e780",
-      "5ae39953fb959335d106e072d277b516b819833a",
-      "5bc63ce53c8aaede0889ee9e90276affbbba7573",
-      "77eb07c78b0a28c539fa31eedb2b91c383270c44",
-      "add36bb8a2c3ec79767358c948af7686e09eb1c9",
-      "c554e150f5d4dac82eb2b976df7e07aad96ff614",
-      "ca2b854ae3f3613b435b60c1b8f301259309773b",
-      "daf1878303b27f7758daa5082afb39f8c7eb3586",
-      "dcabc0b5a7032fc66f8b4afd727ebe323d0b9efb",
-      "dfeae03b732b0918d1311580770b1d9edd7f42bf",
-      "e518da42a48097ceb7648a9961428e300f2db545",
-      "f80eb10d9d31f69bd3a3db0d23dcd91e432ef277"
-      ]
-    }
-  const initialData = formatInitialData(jjHomepage)
-  let loadedNodeMap = new Map([
-    [initialData.nodes[0].id, true],
-  ]);
-  let linkMap = new Map([
-    [initialData.nodes[0].id, true],
-  ]);
-  initialData.links.forEach((link) => {
-    linkMap.set(link.target, true);
-  })
+  // const jjHomepage = {
+  //   "node":{
+  //     "id":"5bc63ce53c8aaede0889ee9e90276affbbba7573",
+  //     "group":"jamesjarvis.io",
+  //     "url":"https://jamesjarvis.io/"
+  //   },
+  //   "links":[
+  //     "4a524f2adcff05c852710d31e68c93fdb8d9e780",
+  //     "5ae39953fb959335d106e072d277b516b819833a",
+  //     "5bc63ce53c8aaede0889ee9e90276affbbba7573",
+  //     "77eb07c78b0a28c539fa31eedb2b91c383270c44",
+  //     "add36bb8a2c3ec79767358c948af7686e09eb1c9",
+  //     "c554e150f5d4dac82eb2b976df7e07aad96ff614",
+  //     "ca2b854ae3f3613b435b60c1b8f301259309773b",
+  //     "daf1878303b27f7758daa5082afb39f8c7eb3586",
+  //     "dcabc0b5a7032fc66f8b4afd727ebe323d0b9efb",
+  //     "dfeae03b732b0918d1311580770b1d9edd7f42bf",
+  //     "e518da42a48097ceb7648a9961428e300f2db545",
+  //     "f80eb10d9d31f69bd3a3db0d23dcd91e432ef277"
+  //     ]
+  //   }
+
+  const emptyData = {
+    "nodes": [],
+    "links": [],
+  }
+  // const initialData = formatInitialData(jjHomepage)
+  let loadedNodeMap = new Map();
+  //   [initialData.nodes[0].id, true],
+  // ]);
+  let linkMap = new Map();
+    // [initialData.nodes[0].id, true],
+  // ]);
+  // initialData.links.forEach((link) => {
+  //   linkMap.set(link.target, true);
+  // })
 
   const ExpandableGraph = () => {
-    const [data, setData] = useState(initialData);
+    const [currentPage, setCurrentPage] = useState("5bc63ce53c8aaede0889ee9e90276affbbba7573")
+    const [data, setData] = useState(emptyData);
 
     const updateData = (newData, existingID) => {
       let tempData = {
@@ -86,12 +92,22 @@
         "links": data.links,
       };
 
-      // The node has not been loaded, so we need to go through the existing data.
-      const objIndex = tempData.nodes.findIndex((n => n.id == existingID));
-      // Update node properties.
-      tempData.nodes[objIndex].id = newData.node.id;
-      tempData.nodes[objIndex].group = newData.node.group;
-      tempData.nodes[objIndex].color = null;
+      if (tempData.nodes.length == 0) {
+        // If the data is being added for the first time, we initialise the first node here.
+        linkMap.set(newData.node.id, true);
+        tempData.nodes.push({
+          "id":     newData.node.id,
+          "group:": newData.node.group,
+          "color":  null,
+        })
+      } else {
+        // The node has not been loaded, so we need to go through the existing data.
+        const objIndex = tempData.nodes.findIndex((n => n.id == existingID));
+        // Update node properties.
+        tempData.nodes[objIndex].id = newData.node.id;
+        tempData.nodes[objIndex].group = newData.node.group;
+        tempData.nodes[objIndex].color = null;
+      }
 
 
       if (newData.links) {
@@ -128,6 +144,13 @@
     	  });
     }
 
+    // This is called on page load to get the initial data.
+    const updateInitialPageData = useEffect(() => {
+      loadedNodeMap.set(currentPage, true);
+      getNodeInfo(currentPage)
+    }, [currentPage])
+
+    // This is called every time each node is clicked on.
     const handleNodeClick = useCallback(node => {
       if (!loadedNodeMap.has(node.id)) {
         // If this node has not been loaded yet, then load the new data into the graph.
