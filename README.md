@@ -31,8 +31,8 @@ To see the UI, open the `frontend/index.html` file in a browser.
 - [x] Create schema for links graph database
 - [x] Implement saving to the db
 - [x] Hit performance target of 100 links/second
-- [ ] Front end UI for creating a graphical view of website connections
-- [ ] Easily cacheable API service for the front-end graphical data
+- [x] Front end UI for creating a graphical view of website connections
+- [x] Easily cacheable API service for the front-end graphical data
 
 ## DB Schema
 
