@@ -10,6 +10,7 @@ require (
 	github.com/gin-gonic/gin v1.6.3
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/lib/pq v1.9.0
+	github.com/ncruces/go-dns v1.0.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/syndtr/goleveldb v1.0.0 // indirect
 	golang.org/x/net v0.0.0-20200813134508-3edf25e44fcc // indirect

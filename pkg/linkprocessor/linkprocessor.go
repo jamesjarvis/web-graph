@@ -1,7 +1,6 @@
 package linkprocessor
 
 import (
-	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
@@ -15,30 +14,12 @@ import (
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
-)
-
-var (
-	// Create HTTP client with timeout
-	transport = &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-		Proxy:           http.ProxyFromEnvironment,
-		DialContext: (&net.Dialer{
-			Timeout:   5 * time.Second,
-			KeepAlive: 100 * time.Second,
-			DualStack: true,
-		}).DialContext,
-		IdleConnTimeout:       100 * time.Second,
-		TLSHandshakeTimeout:   5 * time.Second,
-		ExpectContinueTimeout: 2 * time.Second,
-	}
-	client = &http.Client{
-		Timeout:   10 * time.Second,
-		Transport: transport,
-	}
+	"github.com/ncruces/go-dns"
 )
 
 // LinkProcessor contains all connections necessary for accessing the cache, db and channel for sending urls back to rabbitmq.
 type LinkProcessor struct {
+	httpClient  *http.Client
 	cache       *linkcache.LinkCache
 	linkBatcher *linkstorage.LinkBatcher
 	pageBatcher *linkstorage.PageBatcher
@@ -67,12 +48,42 @@ func NewLinkProcessor(
 	)
 	linkBatcher.SpawnWorkers(numWorkers)
 	pageBatcher.SpawnWorkers(numWorkers)
+	client, err := createHTTPClient()
+	if err != nil {
+		return nil, err
+	}
 	return &LinkProcessor{
 		cache:       linkcache.NewLinkCache(2 * 24 * time.Hour),
 		storage:     storage,
 		linkBatcher: linkBatcher,
 		pageBatcher: pageBatcher,
 		queue:       queue,
+		httpClient:  client,
+	}, nil
+}
+
+func createHTTPClient() (*http.Client, error) {
+	resolver, err := dns.NewDoHResolver(
+		"https://cloudflare-dns.com/dns-query{?dns}",
+		dns.DoHAddresses("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 100 * time.Second,
+				DualStack: true,
+				Resolver:  resolver,
+			}).DialContext,
+			IdleConnTimeout:       100 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ExpectContinueTimeout: 2 * time.Second,
+		},
 	}, nil
 }
 
@@ -166,7 +177,7 @@ func (lp *LinkProcessor) ScrapeLinksFromURL(u *url.URL) ([]*linkstorage.Link, er
 	request.Header.Set("User-Agent", "WebGraph v0.2 https://github.com/jamesjarvis/web-graph - This bot just follows links ¯\\_(ツ)_/¯")
 
 	// Make HTTP request
-	response, err := client.Do(request)
+	response, err := lp.httpClient.Do(request)
 	if err != nil {
 		return nil, err
 	}

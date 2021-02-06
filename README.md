@@ -2,9 +2,9 @@
 
 > Experiment with web scraping
 
-The basic idea of this is that I wanted to be able to crawl from a single URL, and scrape the entire tree of links it can traverse.
+View it live! <https://jamesjarvis.github.io/web-graph/>
 
-Eventually, I'll store these in a database, and create a UI so you can see the graph.
+The basic idea of this is that I wanted to be able to crawl from a single URL, and scrape the entire tree of links it can traverse.
 
 Rough overview:
 
@@ -12,12 +12,12 @@ Crawler is given a url.
 It first checks that this url has not been crawled already, if it has, then it just moves on.
 Then it checks that the url is accessible, it'll do some small exponential backoof, but then returns PageDeadError
 If it can, it will download the page source, and scrape all 'a' elements, and the href attribute from that.
-Then it sends all these scraped URL's to a pool of crawler workers, and the process repeats.
+Then it sends all these scraped URL's to the back of a list, and the process repeats.
 
 ## To run
 
 ```bash
-docker-compose up --build -d && docker-compose logs -f crawler
+docker-compose up --build -d && docker-compose logs -f link-processor
 ```
 
 Then open <localhost:8080> and enter your credentials from [Your database environment file](./database.env.example)
@@ -30,9 +30,9 @@ To see the UI, open the `frontend/index.html` file in a browser.
 - [x] Replace in memory visited check with postgresql (<https://github.com/zolamk/colly-postgres-storage>)
 - [x] Create schema for links graph database
 - [x] Implement saving to the db
-- [x] Hit performance target of 100 links/second
-- [x] Front end UI for creating a graphical view of website connections
-- [x] Easily cacheable API service for the front-end graphical data
+- [x] Hit performance target of 100 links/second (on a good day it hits this)
+- [x] Front end UI for creating a graphical view of website connections (<https://jamesjarvis.github.io/web-graph/>)
+- [x] Easily cacheable API service for the front-end graphical data (<https://api.jamesjarvis.io/>)
 
 ## DB Schema
 
