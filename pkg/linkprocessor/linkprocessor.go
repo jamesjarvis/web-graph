@@ -66,6 +66,7 @@ func createHTTPClient() (*http.Client, error) {
 	resolver, err := dns.NewDoHResolver(
 		"https://cloudflare-dns.com/dns-query{?dns}",
 		dns.DoHAddresses("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"),
+		dns.DoHCache(dns.MaxCacheEntries(1000)),
 	)
 	if err != nil {
 		return nil, err
