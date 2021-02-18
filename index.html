@@ -47,6 +47,7 @@
   const { useState, useCallback, useEffect } = React;
 
   const apiURL = "https://api.jamesjarvis.io"
+  const initialURL = "https://jamesjarvis.io/"
 
   const emptyData = {
     "nodes": [],
@@ -54,6 +55,27 @@
   }
   let loadedNodeMap = new Map();
   let linkMap = new Map();
+
+  const getInitialURLHash = async () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const u = urlParams.get('url');
+    if (u) {
+      return await hash(u)
+    }
+    return await hash(initialURL)
+  }
+
+  const hash = async (urlString) => {
+    let u = new URL(urlString)
+    const minU = u.hostname + u.pathname;
+    console.log(minU);
+    const msgUint8 = new TextEncoder().encode(minU);
+    const hashBuffer = await crypto.subtle.digest('SHA-1', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    console.log(hashHex)
+    return hashHex
+  }
 
   const countLinksFrom = (data) => {
     if (data.links) {
@@ -63,7 +85,7 @@
   }
 
   const ExpandableGraph = () => {
-    const [currentPage, setCurrentPage] = useState("5bc63ce53c8aaede0889ee9e90276affbbba7573")
+    const [currentPage, setCurrentPage] = useState()
     const [selectedNode, setSelectedNode] = useState()
     const [data, setData] = useState(emptyData);
 
@@ -131,10 +153,20 @@
     	  });
     }
 
-    // This is called on page load to get the initial data.
+    // This is called once on page load to get the initial hash from
+    // a url query string.
+    useEffect(() => {
+      getInitialURLHash().then((urlHash) => {
+        setCurrentPage(urlHash)
+      })
+    }, [])
+
+    // This is called after the initial hash has been computed.
     const updateInitialPageData = useEffect(() => {
-      loadedNodeMap.set(currentPage, true);
-      getNodeInfo(currentPage)
+      if (currentPage) {
+        loadedNodeMap.set(currentPage, true);
+        getNodeInfo(currentPage)
+      }
     }, [currentPage])
 
     // This is called every time each node is clicked on.
