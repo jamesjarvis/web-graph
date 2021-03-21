@@ -110,7 +110,7 @@ func (lb *LinkBatcher) ResilientBatchAddLinks(links []*Link) error {
 						log.Printf("Gave up after %d retries!\n", retryCount)
 						break
 					}
-					time.Sleep(time.Duration(retryCount) * 500 * time.Millisecond)
+					time.Sleep(time.Duration(retryCount) * 50 * time.Millisecond)
 					continue
 				}
 			}

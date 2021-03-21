@@ -63,7 +63,7 @@ func (pb *PageBatcher) Worker(endSignal <-chan bool, doneChan chan<- bool) {
 		case <-endSignal:
 			doneChan <- true
 			return
-		case <-time.After(time.Millisecond):
+		case <-time.After(10 * time.Millisecond):
 			var pages []*Page
 
 		Remaining:
