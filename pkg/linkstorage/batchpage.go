@@ -36,7 +36,7 @@ func NewPageBatcher(s *Storage, config pool.Config) (*pool.WorkDispatcher[pool.U
 
 		err := s.BatchAddPages(pages)
 		if err != nil {
-			log.Printf("Batch adding pages failed!: %e", err)
+			log.Printf("Batch adding pages failed!: %v", err)
 			return err
 		}
 

@@ -25,7 +25,7 @@ func NewLinkBatcher(s *Storage, config pool.Config) (*pool.WorkDispatcher[pool.U
 
 		err := s.ResilientBatchAddLinks(links)
 		if err != nil {
-			log.Printf("Batch adding links failed!: %e", err)
+			log.Printf("Batch adding links failed!: %v", err)
 			return err
 		}
 
