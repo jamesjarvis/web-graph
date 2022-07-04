@@ -114,14 +114,14 @@ func main() {
 	failOnError(err, "Failed to connect to postgres")
 	defer func() {
 		err := linkStorage.Close()
-		fmt.Println("===== closed link storage =====", err)
+		log.Println("===== closed link storage =====", err)
 	}()
 
 	queue, err := linkqueue.NewLinkQueue(queueDataDir)
 	failOnError(err, "Failed to initialise queue")
 	defer func() {
 		err := queue.Close()
-		fmt.Println("===== closed link queue =====", err)
+		log.Println("===== closed link queue =====", err)
 	}()
 
 	pageBatcher, err := linkstorage.NewPageBatcher(
@@ -137,7 +137,7 @@ func main() {
 	}
 	defer func() {
 		err := pageBatcher.Close()
-		fmt.Println("===== closed page batcher =====", err)
+		log.Println("===== closed page batcher =====", err)
 	}()
 
 	linkBatcher, err := linkstorage.NewLinkBatcher(
@@ -153,7 +153,7 @@ func main() {
 	}
 	defer func() {
 		err := linkBatcher.Close()
-		fmt.Println("===== closed link batcher =====", err)
+		log.Println("===== closed link batcher =====", err)
 	}()
 
 	linkProcessor, err := linkprocessor.NewLinkProcessor(
@@ -166,7 +166,7 @@ func main() {
 	}
 	defer func() {
 		err := pageBatcher.Close()
-		fmt.Println("===== closed link processor =====", err)
+		log.Println("===== closed link processor =====", err)
 	}()
 
 	worker := func(u *url.URL) {
