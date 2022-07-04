@@ -493,6 +493,7 @@ func (s *Storage) BatchAddPages(pages []Page) error {
 	//prepare the statement
 	stmt, err := s.db.Prepare(sqlStr)
 	if err != nil {
+		// TODO(jamesjarvis): bug here, think it is the way we create the query.
 		return err
 	}
 	defer stmt.Close()
