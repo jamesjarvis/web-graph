@@ -209,12 +209,13 @@ func main() {
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGKILL)
 	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
-	processing := true
-	for processing {
+
+running:
+	for {
 		select {
 		case s := <-sigs:
-			processing = false
 			log.Printf("Received signal %s, shutting down gracefully...\n", s)
+			break running
 		case url := <-queue.DeQueue():
 			linkProcessorPool.Put(context.TODO(), url)
 		case <-ticker.C:
