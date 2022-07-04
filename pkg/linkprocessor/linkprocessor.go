@@ -21,30 +21,24 @@ import (
 
 // LinkProcessor contains all connections necessary for accessing the cache, db and channel for sending urls back to rabbitmq.
 type LinkProcessor struct {
-	httpClient  *http.Client
-	cache       *linkcache.LinkCache
+	httpClient *http.Client
+	cache      *linkcache.LinkCache
+	storage    *linkstorage.Storage
+	queue      *linkqueue.LinkQueue
+	urlChan    chan *url.URL
+
 	linkBatcher *linkstorage.LinkBatcher
-	pageBatcher *pool.WorkDispatcher[pool.UnitOfWork[linkstorage.Page, bool]]
-	storage     *linkstorage.Storage
-	queue       *linkqueue.LinkQueue
-	urlChan     chan *url.URL
+	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]]
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
 func NewLinkProcessor(
+	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]],
 	storage *linkstorage.Storage,
 	batchSize int,
 	queue *linkqueue.LinkQueue,
 	numWorkers int,
 ) (*LinkProcessor, error) {
-	pageBatcher, err := linkstorage.NewPageBatcher(
-		batchSize,
-		numWorkers,
-		storage,
-	)
-	if err != nil {
-		return nil, err
-	}
 	linkBatcher := linkstorage.NewLinkBatcher(
 		batchSize,
 		storage,
