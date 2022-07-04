@@ -1,6 +1,7 @@
 package linkprocessor
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/jamesjarvis/massivelyconcurrentsystems/pool"
 	"github.com/jamesjarvis/web-graph/pkg/linkcache"
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
@@ -22,7 +24,7 @@ type LinkProcessor struct {
 	httpClient  *http.Client
 	cache       *linkcache.LinkCache
 	linkBatcher *linkstorage.LinkBatcher
-	pageBatcher *linkstorage.PageBatcher
+	pageBatcher *pool.WorkDispatcher[pool.UnitOfWork[linkstorage.Page, bool]]
 	storage     *linkstorage.Storage
 	queue       *linkqueue.LinkQueue
 	urlChan     chan *url.URL
@@ -37,6 +39,7 @@ func NewLinkProcessor(
 ) (*LinkProcessor, error) {
 	pageBatcher, err := linkstorage.NewPageBatcher(
 		batchSize,
+		numWorkers,
 		storage,
 	)
 	if err != nil {
@@ -47,7 +50,7 @@ func NewLinkProcessor(
 		storage,
 	)
 	linkBatcher.SpawnWorkers(numWorkers)
-	pageBatcher.SpawnWorkers(numWorkers)
+	pageBatcher.Start()
 	client, err := createHTTPClient()
 	if err != nil {
 		return nil, err
@@ -101,9 +104,10 @@ func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
 		lp.linkBatcher.KillWorkers()
 		log.Println("Link batcher shut down.")
 
-		<-lp.pageBatcher.WaitUntilEmpty()
-		log.Println("Page batcher empty...")
-		lp.pageBatcher.KillWorkers()
+		err := lp.pageBatcher.Close()
+		if err != nil {
+			log.Println("Error closing page batcher")
+		}
 		log.Println("Page batcher shut down.")
 
 		readyToKill <- true
@@ -133,9 +137,13 @@ func (lp *LinkProcessor) SpawnWorkers(n int) chan *url.URL {
 }
 
 // Close immediately kills batching workers.
-func (lp *LinkProcessor) Close() {
+func (lp *LinkProcessor) Close() error {
 	lp.linkBatcher.KillWorkers()
-	lp.pageBatcher.KillWorkers()
+	err := lp.pageBatcher.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // CheckURLExists initially checks the in memory cache forthe url, and returns true if found.
@@ -246,7 +254,7 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 
 	// Mark as visited and save page to DB
 	lp.MarkURLVisited(u)
-	lp.pageBatcher.AddPage(&linkstorage.Page{U: u})
+	lp.pageBatcher.Put(context.TODO(), pool.NewUnitOfWork[linkstorage.Page, bool](linkstorage.Page{U: u}, nil))
 
 	// Retrieve html, parse links
 	var links []*linkstorage.Link
@@ -269,7 +277,7 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 			}
 
 			// This saves each link page to db and the link
-			lp.pageBatcher.AddPage(&linkstorage.Page{U: link.ToU})
+			lp.pageBatcher.Put(context.TODO(), pool.NewUnitOfWork[linkstorage.Page, bool](linkstorage.Page{U: link.ToU}, nil))
 		}
 
 		lp.linkBatcher.AddLink(link)

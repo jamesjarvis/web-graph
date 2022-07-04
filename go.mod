@@ -8,6 +8,7 @@ require (
 	github.com/gin-contrib/cors v1.3.1
 	github.com/gin-gonic/gin v1.6.3
 	github.com/hashicorp/golang-lru v0.5.4
+	github.com/jamesjarvis/massivelyconcurrentsystems v0.0.0-20220704201925-a6bb05700ec6
 	github.com/lib/pq v1.9.0
 	github.com/ncruces/go-dns v1.0.0
 	github.com/patrickmn/go-cache v2.1.0+incompatible

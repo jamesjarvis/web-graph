@@ -4,10 +4,14 @@ import (
 	"crypto/sha1"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/ncruces/go-dns"
 )
 
 var (
@@ -78,4 +82,30 @@ func ParseURL(s string) (*url.URL, error) {
 		return nil, errors.New("We do not want to scrape this URL")
 	}
 	return u, nil
+}
+
+func CreateHTTPClient() (*http.Client, error) {
+	resolver, err := dns.NewDoHResolver(
+		"https://cloudflare-dns.com/dns-query{?dns}",
+		dns.DoHAddresses("1.1.1.1", "1.0.0.1", "2606:4700:4700::1111", "2606:4700:4700::1001"),
+		dns.DoHCache(dns.MaxCacheEntries(1000)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 100 * time.Second,
+				DualStack: true,
+				Resolver:  resolver,
+			}).DialContext,
+			IdleConnTimeout:       100 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ExpectContinueTimeout: 2 * time.Second,
+		},
+	}, nil
 }
