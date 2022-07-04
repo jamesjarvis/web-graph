@@ -119,13 +119,6 @@ func main() {
 		log.Println("===== closed link storage =====", err)
 	}()
 
-	queue, err := linkqueue.NewLinkQueue(queueDataDir)
-	failOnError(err, "Failed to initialise queue")
-	defer func() {
-		err := queue.Close()
-		log.Println("===== closed link queue =====", err)
-	}()
-
 	pageBatcher, err := linkstorage.NewPageBatcher(
 		linkStorage,
 		pool.NewConfig(
@@ -160,6 +153,13 @@ func main() {
 		log.Println("===== closed link batcher =====", err)
 	}()
 
+	queue, err := linkqueue.NewLinkQueue(queueDataDir)
+	failOnError(err, "Failed to initialise queue")
+	defer func() {
+		err := queue.Close()
+		log.Println("===== closed link queue =====", err)
+	}()
+
 	linkProcessor, err := linkprocessor.NewLinkProcessor(
 		pageBatcher,
 		linkBatcher,
@@ -170,6 +170,9 @@ func main() {
 	}
 
 	worker := func(u *url.URL) {
+		if u == nil {
+			return
+		}
 		err := linkProcessor.ProcessURL(u)
 		if err != nil {
 			log.Printf("Error whilst processing: %v", err)
