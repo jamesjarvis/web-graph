@@ -1,6 +1,7 @@
 package linkprocessor
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/jamesjarvis/massivelyconcurrentsystems/pool"
 	"github.com/jamesjarvis/web-graph/pkg/linkcache"
 	"github.com/jamesjarvis/web-graph/pkg/linkqueue"
 	"github.com/jamesjarvis/web-graph/pkg/linkstorage"
@@ -19,46 +21,30 @@ import (
 
 // LinkProcessor contains all connections necessary for accessing the cache, db and channel for sending urls back to rabbitmq.
 type LinkProcessor struct {
-	httpClient  *http.Client
-	cache       *linkcache.LinkCache
-	linkBatcher *linkstorage.LinkBatcher
-	pageBatcher *linkstorage.PageBatcher
-	storage     *linkstorage.Storage
-	queue       *linkqueue.LinkQueue
-	urlChan     chan *url.URL
+	httpClient *http.Client
+	cache      *linkcache.LinkCache
+	queue      *linkqueue.LinkQueue
+
+	linkBatcher pool.Dispatcher[pool.UnitOfWork[*linkstorage.Link, bool]]
+	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]]
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
 func NewLinkProcessor(
-	storage *linkstorage.Storage,
-	batchSize int,
+	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]],
+	linkBatcher pool.Dispatcher[pool.UnitOfWork[*linkstorage.Link, bool]],
 	queue *linkqueue.LinkQueue,
-	numWorkers int,
 ) (*LinkProcessor, error) {
-	pageBatcher, err := linkstorage.NewPageBatcher(
-		batchSize,
-		storage,
-	)
-	if err != nil {
-		return nil, err
-	}
-	linkBatcher := linkstorage.NewLinkBatcher(
-		batchSize,
-		storage,
-	)
-	linkBatcher.SpawnWorkers(numWorkers)
-	pageBatcher.SpawnWorkers(numWorkers)
 	client, err := createHTTPClient()
 	if err != nil {
 		return nil, err
 	}
 	return &LinkProcessor{
 		cache:       linkcache.NewLinkCache(2 * 24 * time.Hour),
-		storage:     storage,
-		linkBatcher: linkBatcher,
-		pageBatcher: pageBatcher,
 		queue:       queue,
 		httpClient:  client,
+		linkBatcher: linkBatcher,
+		pageBatcher: pageBatcher,
 	}, nil
 }
 
@@ -86,56 +72,6 @@ func createHTTPClient() (*http.Client, error) {
 			ExpectContinueTimeout: 2 * time.Second,
 		},
 	}, nil
-}
-
-// GracefulShutdown returns a channel that receives true when it has finished flushing the db batching cache / finished writing to the queue.
-func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
-	readyToKill := make(chan bool)
-
-	go func() {
-		close(lp.urlChan)
-
-		// Check if link/page batching has finished.
-		<-lp.linkBatcher.WaitUntilEmpty()
-		log.Println("Link batcher empty...")
-		lp.linkBatcher.KillWorkers()
-		log.Println("Link batcher shut down.")
-
-		<-lp.pageBatcher.WaitUntilEmpty()
-		log.Println("Page batcher empty...")
-		lp.pageBatcher.KillWorkers()
-		log.Println("Page batcher shut down.")
-
-		readyToKill <- true
-	}()
-
-	return readyToKill
-}
-
-// SpawnWorkers vaguely spawns up n number of workers, that can then be communicated with by pushing urls to the channel.
-func (lp *LinkProcessor) SpawnWorkers(n int) chan *url.URL {
-	lp.urlChan = make(chan *url.URL)
-
-	for w := 1; w <= n; w++ {
-		go func(workerID int) {
-			var err error
-			for u := range lp.urlChan {
-				err = lp.ProcessURL(u)
-				if err != nil {
-					log.Printf("Error whilst processing: %v", err)
-				}
-			}
-			log.Printf("Worker %d finished :)", workerID)
-		}(w)
-	}
-
-	return lp.urlChan
-}
-
-// Close immediately kills batching workers.
-func (lp *LinkProcessor) Close() {
-	lp.linkBatcher.KillWorkers()
-	lp.pageBatcher.KillWorkers()
 }
 
 // CheckURLExists initially checks the in memory cache forthe url, and returns true if found.
@@ -246,7 +182,7 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 
 	// Mark as visited and save page to DB
 	lp.MarkURLVisited(u)
-	lp.pageBatcher.AddPage(&linkstorage.Page{U: u})
+	lp.pageBatcher.Put(context.TODO(), pool.NewUnitOfWork[linkstorage.Page, bool](linkstorage.Page{U: u}, nil))
 
 	// Retrieve html, parse links
 	var links []*linkstorage.Link
@@ -269,10 +205,10 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 			}
 
 			// This saves each link page to db and the link
-			lp.pageBatcher.AddPage(&linkstorage.Page{U: link.ToU})
+			lp.pageBatcher.Put(context.TODO(), pool.NewUnitOfWork[linkstorage.Page, bool](linkstorage.Page{U: link.ToU}, nil))
 		}
 
-		lp.linkBatcher.AddLink(link)
+		lp.linkBatcher.Put(context.TODO(), pool.NewUnitOfWork[*linkstorage.Link, bool](link, nil))
 	}
 
 	links = nil

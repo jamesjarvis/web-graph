@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jamesjarvis/web-graph/pkg/linkutils"
+	"github.com/lib/pq"
 )
 
 // Storage implements a PostgreSQL storage backend for colly
@@ -395,6 +396,10 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 	// s.AddPage(fromU)
 	// s.AddPage(toU)
 
+	if len(links) == 0 {
+		return nil
+	}
+
 	valueStrings := make([]string, 0, len(links))
 	vals := []interface{}{}
 
@@ -425,8 +430,57 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 	return err
 }
 
+// ResilientBatchAddLinks shrinks the batch sizes until it eventually works :shrug:
+func (s *Storage) ResilientBatchAddLinks(links []*Link) error {
+	maxRetries := 20
+	var retryCount int
+	var err error
+	batchSize := len(links)
+	tempBatch := links
+	// This simply backs off retries with this shitty foreign key error.
+	for batchSize >= 1 {
+		err = s.BatchAddLinks(tempBatch[:batchSize])
+		if err != nil {
+			// If we know this kind of error, we backoff for a bit and retry the same batch.
+			if pqErr, ok := err.(*pq.Error); ok {
+				// Here err is of type *pq.Error, you may inspect all its fields, e.g.:
+				if pqErr.Code == "23503" {
+					retryCount++
+					// Here the error code is a foreign_key_violation, and we can maaaybe assume that the link will eventually be added so we retry this for 10 seconds or so.
+					if retryCount > 10 {
+						log.Printf("retrying foreign_key_violation %d/%d\n", retryCount+1, maxRetries)
+					}
+					if retryCount == maxRetries {
+						log.Printf("Gave up after %d retries!\n", retryCount)
+						break
+					}
+					time.Sleep(time.Duration(retryCount) * 50 * time.Millisecond)
+					continue
+				}
+			}
+			// Here we do not know the kind of error, but know there is one.
+			if batchSize > 1 {
+				log.Printf("Encountered weird error with batch size %d, splitting the batch...", batchSize)
+				batchSize = batchSize / 2
+				// time.Sleep(50 * time.Millisecond)
+				continue
+			}
+			log.Printf("Skipping failed message %d\n", len(links)-len(tempBatch))
+		}
+		// Here the batch size == 1, and there is an error we do not know, so we decide to skip that message.
+		// Or if there was no error, we continue through the batch.
+		tempBatch = tempBatch[batchSize:]
+		batchSize = len(tempBatch)
+	}
+	return err
+}
+
 // BatchAddPages takes a batch of pages and inserts them, not giving a fuck whether or not they clash
-func (s *Storage) BatchAddPages(pages []*Page) error {
+func (s *Storage) BatchAddPages(pages []Page) error {
+	if len(pages) == 0 {
+		return nil
+	}
+
 	valueStrings := make([]string, 0, len(pages))
 	vals := []interface{}{}
 
@@ -447,6 +501,7 @@ func (s *Storage) BatchAddPages(pages []*Page) error {
 	//prepare the statement
 	stmt, err := s.db.Prepare(sqlStr)
 	if err != nil {
+		// TODO(jamesjarvis): bug here, think it is the way we create the query.
 		return err
 	}
 	defer stmt.Close()
