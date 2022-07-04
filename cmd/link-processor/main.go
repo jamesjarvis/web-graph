@@ -140,12 +140,26 @@ func main() {
 		fmt.Println("===== closed page batcher =====", err)
 	}()
 
+	linkBatcher, err := linkstorage.NewLinkBatcher(
+		linkStorage,
+		pool.NewConfig(
+			pool.SetBufferSize(100),
+			pool.SetBatchSize(100),
+			pool.SetNumConsumers(1),
+		),
+	)
+	if err != nil {
+		log.Fatal("failed to create page batcher", err)
+	}
+	defer func() {
+		err := linkBatcher.Close()
+		fmt.Println("===== closed link batcher =====", err)
+	}()
+
 	linkProcessor, err := linkprocessor.NewLinkProcessor(
 		pageBatcher,
-		linkStorage,
-		1000,
+		linkBatcher,
 		queue,
-		1,
 	)
 	if err != nil {
 		log.Fatal("failed to create link processor", err)
@@ -179,6 +193,8 @@ func main() {
 	}
 
 	log.Println("Begin processing...")
+	linkBatcher.Start()
+	pageBatcher.Start()
 	linkProcessorPool.Start()
 
 	sigs := make(chan os.Signal, 4)

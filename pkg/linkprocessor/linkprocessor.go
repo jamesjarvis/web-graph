@@ -23,39 +23,28 @@ import (
 type LinkProcessor struct {
 	httpClient *http.Client
 	cache      *linkcache.LinkCache
-	storage    *linkstorage.Storage
 	queue      *linkqueue.LinkQueue
-	urlChan    chan *url.URL
 
-	linkBatcher *linkstorage.LinkBatcher
+	linkBatcher pool.Dispatcher[pool.UnitOfWork[*linkstorage.Link, bool]]
 	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]]
 }
 
 // NewLinkProcessor is a helper function for creating the LinkProcessor.
 func NewLinkProcessor(
 	pageBatcher pool.Dispatcher[pool.UnitOfWork[linkstorage.Page, bool]],
-	storage *linkstorage.Storage,
-	batchSize int,
+	linkBatcher pool.Dispatcher[pool.UnitOfWork[*linkstorage.Link, bool]],
 	queue *linkqueue.LinkQueue,
-	numWorkers int,
 ) (*LinkProcessor, error) {
-	linkBatcher := linkstorage.NewLinkBatcher(
-		batchSize,
-		storage,
-	)
-	linkBatcher.SpawnWorkers(numWorkers)
-	pageBatcher.Start()
 	client, err := createHTTPClient()
 	if err != nil {
 		return nil, err
 	}
 	return &LinkProcessor{
 		cache:       linkcache.NewLinkCache(2 * 24 * time.Hour),
-		storage:     storage,
-		linkBatcher: linkBatcher,
-		pageBatcher: pageBatcher,
 		queue:       queue,
 		httpClient:  client,
+		linkBatcher: linkBatcher,
+		pageBatcher: pageBatcher,
 	}, nil
 }
 
@@ -83,61 +72,6 @@ func createHTTPClient() (*http.Client, error) {
 			ExpectContinueTimeout: 2 * time.Second,
 		},
 	}, nil
-}
-
-// GracefulShutdown returns a channel that receives true when it has finished flushing the db batching cache / finished writing to the queue.
-func (lp *LinkProcessor) GracefulShutdown() <-chan bool {
-	readyToKill := make(chan bool)
-
-	go func() {
-		close(lp.urlChan)
-
-		// Check if link/page batching has finished.
-		<-lp.linkBatcher.WaitUntilEmpty()
-		log.Println("Link batcher empty...")
-		lp.linkBatcher.KillWorkers()
-		log.Println("Link batcher shut down.")
-
-		err := lp.pageBatcher.Close()
-		if err != nil {
-			log.Println("Error closing page batcher")
-		}
-		log.Println("Page batcher shut down.")
-
-		readyToKill <- true
-	}()
-
-	return readyToKill
-}
-
-// SpawnWorkers vaguely spawns up n number of workers, that can then be communicated with by pushing urls to the channel.
-func (lp *LinkProcessor) SpawnWorkers(n int) chan *url.URL {
-	lp.urlChan = make(chan *url.URL)
-
-	for w := 1; w <= n; w++ {
-		go func(workerID int) {
-			var err error
-			for u := range lp.urlChan {
-				err = lp.ProcessURL(u)
-				if err != nil {
-					log.Printf("Error whilst processing: %v", err)
-				}
-			}
-			log.Printf("Worker %d finished :)", workerID)
-		}(w)
-	}
-
-	return lp.urlChan
-}
-
-// Close immediately kills batching workers.
-func (lp *LinkProcessor) Close() error {
-	lp.linkBatcher.KillWorkers()
-	err := lp.pageBatcher.Close()
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // CheckURLExists initially checks the in memory cache forthe url, and returns true if found.
@@ -274,7 +208,7 @@ func (lp *LinkProcessor) ProcessURL(u *url.URL) error {
 			lp.pageBatcher.Put(context.TODO(), pool.NewUnitOfWork[linkstorage.Page, bool](linkstorage.Page{U: link.ToU}, nil))
 		}
 
-		lp.linkBatcher.AddLink(link)
+		lp.linkBatcher.Put(context.TODO(), pool.NewUnitOfWork[*linkstorage.Link, bool](link, nil))
 	}
 
 	links = nil
