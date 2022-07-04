@@ -42,6 +42,8 @@ var (
 	dbTableLink = "links_visited"
 
 	queueDataDir = os.Getenv("QUEUE_DATA")
+
+	defaultBatchInterval = time.Second
 )
 
 func failOnError(err error, msg string) {
@@ -130,6 +132,7 @@ func main() {
 			pool.SetBufferSize(100),
 			pool.SetBatchSize(100),
 			pool.SetNumConsumers(1),
+			pool.SetBatchInterval(defaultBatchInterval),
 		),
 	)
 	if err != nil {
@@ -146,6 +149,7 @@ func main() {
 			pool.SetBufferSize(100),
 			pool.SetBatchSize(100),
 			pool.SetNumConsumers(1),
+			pool.SetBatchInterval(defaultBatchInterval),
 		),
 	)
 	if err != nil {
@@ -164,10 +168,6 @@ func main() {
 	if err != nil {
 		log.Fatal("failed to create link processor", err)
 	}
-	defer func() {
-		err := pageBatcher.Close()
-		log.Println("===== closed link processor =====", err)
-	}()
 
 	worker := func(u *url.URL) {
 		err := linkProcessor.ProcessURL(u)
@@ -180,9 +180,14 @@ func main() {
 		worker,
 		pool.NewConfig(
 			pool.SetNumConsumers(2),
+			pool.SetBatchInterval(defaultBatchInterval),
+			pool.SetBufferSize(10),
 		),
 	)
-	failOnError(err, "Could not initialise link processor")
+	defer func() {
+		err := linkProcessorPool.Close()
+		log.Println("===== closed link processor =====", err)
+	}()
 
 	log.Println("Processor initialised! 🤖")
 
