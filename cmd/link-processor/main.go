@@ -125,12 +125,12 @@ func main() {
 		linkStorage,
 		1000,
 		queue,
-		2,
+		1,
 	)
 	failOnError(err, "Could not initialise link processor")
 
 	log.Println("Begin processing...")
-	urlProcessingChan := linkProcessor.SpawnWorkers(3)
+	urlProcessingChan := linkProcessor.SpawnWorkers(4)
 
 	sigs := make(chan os.Signal, 4)
 	signal.Notify(sigs, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP, syscall.SIGKILL)
