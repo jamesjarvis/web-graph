@@ -396,6 +396,10 @@ func (s *Storage) BatchAddLinks(links []*Link) error {
 	// s.AddPage(fromU)
 	// s.AddPage(toU)
 
+	if len(links) == 0 {
+		return nil
+	}
+
 	valueStrings := make([]string, 0, len(links))
 	vals := []interface{}{}
 
@@ -473,6 +477,10 @@ func (s *Storage) ResilientBatchAddLinks(links []*Link) error {
 
 // BatchAddPages takes a batch of pages and inserts them, not giving a fuck whether or not they clash
 func (s *Storage) BatchAddPages(pages []Page) error {
+	if len(pages) == 0 {
+		return nil
+	}
+
 	valueStrings := make([]string, 0, len(pages))
 	vals := []interface{}{}
 
